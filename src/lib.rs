@@ -1,7 +1,8 @@
+use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
 use near_sdk::json_types::U128;
-use near_sdk::{env, log, near_bindgen, require, AccountId, Timestamp};
+use near_sdk::{env, log, near_bindgen, require, AccountId, Timestamp, PromiseOrValue, Balance};
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize)]
@@ -75,9 +76,11 @@ impl Launchpad {
             .map(|index| (keys.get(index).unwrap(), values.get(index).unwrap()))
             .collect()
     }
+}
 
-    pub fn callback_buy(&self, sender: AccountId, amount: U128) {
-        // Authorized only by supported FT contract
+#[near_bindgen]
+impl FungibleTokenReceiver for Launchpad {
+    fn ft_on_transfer(&mut self, sender_id: AccountId, amount: U128, msg: String) -> PromiseOrValue<U128> {
         require!(
             self.dai_account_id == env::predecessor_account_id()
                 || self.usdc_account_id == env::predecessor_account_id()
@@ -93,6 +96,21 @@ impl Launchpad {
             )
         );
 
+        match msg.as_str() {
+            "buy-pack" => PromiseOrValue::Value(U128::from(0)),
+            _ => {
+                let prepaid_gas = env::prepaid_gas();
+                let account_id = env::current_account_id();
+                ext_self::value_please(
+                    msg,
+                    account_id,
+                    NO_DEPOSIT,
+                    prepaid_gas - GAS_FOR_FT_ON_TRANSFER,
+                )
+                    .into()
+            }
+        }
+
         // TODO: Verify if minting time have started
         // match env::block_timestamp() {
         //     Some(time) if self.public_sale_start > time => {}
@@ -100,7 +118,7 @@ impl Launchpad {
         //     _ => panic!(),
         // }
 
-        if self.private_sale_start < env::block_timestamp() {}
+        //if self.private_sale_start < env::block_timestamp() {}
 
         /*
            TODO : If private sale started verify if sender is into whitelist
@@ -109,6 +127,15 @@ impl Launchpad {
 
         // Finally
         // TODO mint an NFT pack and send it to the sender
+    }
+}
+
+#[near_bindgen]
+impl ValueReturnTrait for Launchpad {
+    fn value_please(&self, amount_to_return: String) -> PromiseOrValue<U128> {
+        log!("in value_please, amount_to_return = {}", amount_to_return);
+        let amount: Balance = amount_to_return.parse().expect("Not an integer");
+        PromiseOrValue::Value(amount.into())
     }
 }
 
@@ -157,14 +184,14 @@ mod tests {
         contract.add_whitelist("alice_near".to_string(), env::block_timestamp().saturating_add(100), U128::from(10));
     }
 
-    #[test]
-    fn buy() {
-        let mut context = get_context(false);
-        context.predecessor_account_id = AccountId::new_unchecked("usdc_near".to_string());
-        testing_env!(context);
-
-        let mut contract = default_launchpad_init("admin_near".to_string());
-        contract.callback_buy(AccountId::new_unchecked("usdc_near".to_string()), U128(100));
-        //println!("Ok: {:?}", contract.get_whitelist());
-    }
+    // #[test]
+    // fn buy() {
+    //     let mut context = get_context(false);
+    //     context.predecessor_account_id = AccountId::new_unchecked("usdc_near".to_string());
+    //     testing_env!(context);
+    //
+    //     let mut contract = default_launchpad_init("admin_near".to_string());
+    //     contract.callback_buy(AccountId::new_unchecked("usdc_near".to_string()), U128(100));
+    //     //println!("Ok: {:?}", contract.get_whitelist());
+    // }
 }
