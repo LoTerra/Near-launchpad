@@ -15,6 +15,7 @@ pub struct Launchpad {
     dai_account_id: AccountId,
     private_sale_start: u64,
     public_sale_start: u64,
+    switch_off: bool
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Debug)]
@@ -50,6 +51,7 @@ impl Launchpad {
             dai_account_id,
             private_sale_start,
             public_sale_start,
+            switch_off: false
         }
     }
 
@@ -57,14 +59,13 @@ impl Launchpad {
         require!(env::signer_account_id() == self.admin, "Owner's method");
 
         // https://doc.rust-lang.org/std/primitive.i8.html#method.wrapping_add
-        self.whitelist.insert(&AccountId::new_unchecked(address), &WhitelistState {
+        self.whitelist.insert(&AccountId::new_unchecked(address.clone()), &WhitelistState {
             restricted: false,
             minting_start,
             minting_price
         });
 
-
-        log!(format!("Whitelist user {}", env::signer_account_id()).as_str());
+        log!(format!("Whitelist user {}", address));
     }
 
     pub fn get_whitelist(&self, from_index: u64, limit: u64) -> Vec<(AccountId, WhitelistState)> {
