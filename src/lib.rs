@@ -1,6 +1,7 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::{AccountId, env, log, near_bindgen, require, Timestamp};
 use near_sdk::json_types::U128;
+use near_contract_standards;
 
 
 #[near_bindgen]
@@ -12,7 +13,9 @@ pub struct Launchpad {
     admin: AccountId,
     usdc_account_id: AccountId,
     usdt_account_id: AccountId,
-    dai_account_id: AccountId
+    dai_account_id: AccountId,
+    private_sale_start: u64,
+    public_sale_start: u64
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Debug)]
@@ -29,9 +32,10 @@ pub struct WhitelistState {
 impl Launchpad {
 
     #[init]
-    pub fn new(minting_price: u128, usdc_account_id: AccountId, usdt_account_id: AccountId, dai_account_id: AccountId) -> Self {
+    pub fn new(minting_price: u128, usdc_account_id: AccountId, usdt_account_id: AccountId, dai_account_id: AccountId, private_sale_start: u64, public_sale_start: u64) -> Self {
         log!("Custom counter initialization!");
-        Self { whitelist: vec![], minting_price, admin: env::signer_account_id(), usdc_account_id, usdt_account_id, dai_account_id}
+        require!(private_sale_start < public_sale_start, "The private sale should start before the public sale");
+        Self { whitelist: vec![], minting_price, admin: env::signer_account_id(), usdc_account_id, usdt_account_id, dai_account_id, private_sale_start , public_sale_start }
     }
 
     pub fn add_whitelist(&mut self, minting_start: Timestamp, minting_price: U128) {
@@ -54,6 +58,33 @@ impl Launchpad {
         return data;
     }
 
+    pub fn callback_buy(&self, sender: AccountId, amount: U128) {
+        // Authorized only by supported FT contract
+        require!(self.dai_account_id == env::predecessor_account_id() || self.usdc_account_id == env::predecessor_account_id() || self.usdt_account_id == env::predecessor_account_id(), "Only allowed NF contracts can call this message");
+        // Verify the amount sent match with minting cost
+        require!(amount == self.minting_price, format!("Wrong amount sent, minting price {} DAI/USDC/USDT", self.minting_price));
+
+        // TODO: Verify if minting time have started
+        match env::block_timestamp() {
+            Some(time) if self.public_sale_start > time => {},
+            Some(time) if self.private_sale_start > time => {}
+            _ => panic!()
+        }
+
+        if self.private_sale_start < env::block_timestamp() {
+
+        }
+
+        /*
+            TODO : If private sale started verify if sender is into whitelist
+         */
+        // TODO verify minting limit
+
+
+
+        // Finally
+        // TODO mint an NFT pack and send it to the sender
+    }
 
 }
 
@@ -95,5 +126,16 @@ mod tests {
         testing_env!(context);
         let mut contract = default_launchpad_init("admin_near".to_string());
         contract.add_whitelist(env::block_timestamp().saturating_add(100), U128::from(10));
+    }
+
+    #[test]
+    fn buy() {
+        let mut context = get_context(false);
+        context.predecessor_account_id = AccountId::new_unchecked("usdc_near".to_string());
+        testing_env!(context);
+
+        let mut contract = default_launchpad_init("admin_near".to_string());
+        contract.buy();
+        //println!("Ok: {:?}", contract.get_whitelist());
     }
 }
