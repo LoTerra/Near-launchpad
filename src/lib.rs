@@ -107,6 +107,10 @@ impl Launchpad {
             .map(|index| (keys.get(index).unwrap(), values.get(index).unwrap()))
             .collect()
     }
+
+    /*
+        TODO: Query get minting info
+     */
 }
 
 #[near_bindgen]
