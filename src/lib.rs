@@ -2,10 +2,9 @@ use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, UnorderedMap};
 use near_sdk::json_types::U128;
-use near_sdk::{
-    env, log, near_bindgen, require, AccountId, Balance, Gas, PromiseOrValue, Timestamp,
-};
+use near_sdk::{env, log, near_bindgen, require, AccountId, Balance, Gas, PromiseOrValue, Timestamp, Promise, ext_contract};
 use std::borrow::Borrow;
+use near_sdk::PromiseOrValue::Promise;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize)]
@@ -22,6 +21,7 @@ pub struct Launchpad {
     switch_off: bool,
     // Create a storage key address => minted_amount value
     minted: LookupMap<AccountId, u64>,
+    nft_pack_contract: AccountId
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Debug)]
@@ -111,6 +111,12 @@ impl Launchpad {
     /*
         TODO: Query get minting info
      */
+
+    pub fn mint_result(){
+        require!(env::current_account_id() == env::predecessor_account_id());
+        require!(env::promise_result() == 1);
+
+    }
 }
 
 #[near_bindgen]
@@ -181,8 +187,10 @@ impl FungibleTokenReceiver for Launchpad {
                             self.minted.insert(&sender_id.into(), &1);
                         }
                         // TODO: Mint the NFT pack and send it to the sender
-
-                        PromiseOrValue::Value(U128::from(0))
+                        let promise0 = env::promise_create(self.nft_pack_contract.clone(), "mint_token", &[], 0, Default::default());
+                        let promise1 = env::promise_then(promise0, env::current_account_id(), "mint_result", &[], 0, Default::default());
+                        env::promise_return(promise1);
+                        PromiseOrValue::Value(amount)
                     }
                     _ => {
                         log!("Sale have not started yet");
