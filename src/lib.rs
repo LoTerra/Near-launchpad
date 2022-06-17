@@ -60,6 +60,9 @@ impl Launchpad {
             switch_off: false,
             minted: LookupMap::new(b"m"),
         }
+
+        /* TODO: allows our contract to deploy the NFT pack contract as admin more info for
+        dev help https://www.near-sdk.io/promises/deploy-contract*/
     }
 
     pub fn add_whitelist(
@@ -71,7 +74,10 @@ impl Launchpad {
     ) {
         require!(env::signer_account_id() == self.admin, "Owner's method");
         let account_id = AccountId::new_unchecked(address.clone());
-        require!(self.whitelist.get(&account_id).is_none(), "Address already exist");
+        require!(
+            self.whitelist.get(&account_id).is_none(),
+            "Address already exist"
+        );
 
         self.whitelist.insert(
             &account_id,
@@ -87,12 +93,12 @@ impl Launchpad {
     }
 
     /*
-        TODO: Add update whitelist only admin allowed
-     */
+       TODO: Add update whitelist only admin allowed
+    */
 
     /*
-        TODO: Allow admin to withdraw collected funds out of the launchpad contract
-     */
+       TODO: Allow admin to withdraw collected funds out of the launchpad contract
+    */
 
     pub fn get_whitelist(&self, from_index: u64, limit: u64) -> Vec<(AccountId, WhitelistState)> {
         let keys = self.whitelist.keys_as_vector();
