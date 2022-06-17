@@ -2,7 +2,9 @@ use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
 use near_sdk::json_types::U128;
-use near_sdk::{env, log, near_bindgen, require, AccountId, Timestamp, PromiseOrValue, Balance};
+use near_sdk::{
+    env, log, near_bindgen, require, AccountId, Balance, Gas, PromiseOrValue, Timestamp,
+};
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize)]
@@ -16,15 +18,16 @@ pub struct Launchpad {
     dai_account_id: AccountId,
     private_sale_start: u64,
     public_sale_start: u64,
-    switch_off: bool
+    switch_off: bool,
+    // TODO: Create a storage key address => minted_amount value
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Debug)]
 pub struct WhitelistState {
-    // See more data types at https://doc.rust-lang.org/book/ch03-02-data-types.html
     restricted: bool,
     minting_start: Timestamp,
     minting_price: U128,
+    minting_limit: u8
 }
 
 #[near_bindgen]
@@ -52,19 +55,29 @@ impl Launchpad {
             dai_account_id,
             private_sale_start,
             public_sale_start,
-            switch_off: false
+            switch_off: false,
         }
     }
 
-    pub fn add_whitelist(&mut self, address: String, minting_start: Timestamp, minting_price: U128) {
+    pub fn add_whitelist(
+        &mut self,
+        address: String,
+        minting_start: Timestamp,
+        minting_price: U128,
+        minting_limit: u8
+    ) {
         require!(env::signer_account_id() == self.admin, "Owner's method");
 
         // https://doc.rust-lang.org/std/primitive.i8.html#method.wrapping_add
-        self.whitelist.insert(&AccountId::new_unchecked(address.clone()), &WhitelistState {
-            restricted: false,
-            minting_start,
-            minting_price
-        });
+        self.whitelist.insert(
+            &AccountId::new_unchecked(address.clone()),
+            &WhitelistState {
+                restricted: false,
+                minting_start,
+                minting_price,
+                minting_limit
+            },
+        );
 
         log!(format!("Whitelist user {}", address));
     }
@@ -80,7 +93,12 @@ impl Launchpad {
 
 #[near_bindgen]
 impl FungibleTokenReceiver for Launchpad {
-    fn ft_on_transfer(&mut self, sender_id: AccountId, amount: U128, msg: String) -> PromiseOrValue<U128> {
+    fn ft_on_transfer(
+        &mut self,
+        sender_id: AccountId,
+        amount: U128,
+        msg: String,
+    ) -> PromiseOrValue<U128> {
         require!(
             self.dai_account_id == env::predecessor_account_id()
                 || self.usdc_account_id == env::predecessor_account_id()
@@ -95,28 +113,38 @@ impl FungibleTokenReceiver for Launchpad {
                 self.minting_price
             )
         );
+        log!(
+            "in {} tokens from @{} ft_on_transfer, msg = {}",
+            amount.0,
+            sender_id.as_ref(),
+            msg
+        );
 
         match msg.as_str() {
-            "buy-pack" => PromiseOrValue::Value(U128::from(0)),
+            "buy_ticket" => {
+                // Verify if minting time have started otherwise refund
+                match env::block_timestamp() {
+                    time if time > self.public_sale_start => {
+                        // TODO: Save the Sender to minted storage and increment the amount already minted
+                        PromiseOrValue::Value(U128::from(0))
+                    },
+                    time if time > self.private_sale_start => {
+                        // TODO: Verify the sender is on the whitelist
+                        // TODO: Verify the sender have not reached the minting limit
+                        // TODO: Save the Sender to minted storage and increment the amount already minted
+                        PromiseOrValue::Value(U128::from(0))
+                    },
+                    _ => {
+                        log!("Sale have not started yet");
+                        PromiseOrValue::Value(amount)
+                    }
+                }
+            }
             _ => {
-                let prepaid_gas = env::prepaid_gas();
-                let account_id = env::current_account_id();
-                ext_self::value_please(
-                    msg,
-                    account_id,
-                    NO_DEPOSIT,
-                    prepaid_gas - GAS_FOR_FT_ON_TRANSFER,
-                )
-                    .into()
+                log!("Invalid instruction for launchpad call");
+                PromiseOrValue::Value(amount)
             }
         }
-
-        // TODO: Verify if minting time have started
-        // match env::block_timestamp() {
-        //     Some(time) if self.public_sale_start > time => {}
-        //     Some(time) if self.private_sale_start > time => {}
-        //     _ => panic!(),
-        // }
 
         //if self.private_sale_start < env::block_timestamp() {}
 
@@ -127,15 +155,6 @@ impl FungibleTokenReceiver for Launchpad {
 
         // Finally
         // TODO mint an NFT pack and send it to the sender
-    }
-}
-
-#[near_bindgen]
-impl ValueReturnTrait for Launchpad {
-    fn value_please(&self, amount_to_return: String) -> PromiseOrValue<U128> {
-        log!("in value_please, amount_to_return = {}", amount_to_return);
-        let amount: Balance = amount_to_return.parse().expect("Not an integer");
-        PromiseOrValue::Value(amount.into())
     }
 }
 
@@ -171,7 +190,12 @@ mod tests {
         testing_env!(context);
 
         let mut contract = default_launchpad_init("admin_near".to_string());
-        contract.add_whitelist("alice_near".to_string(), env::block_timestamp().saturating_add(100), U128::from(1000));
+        contract.add_whitelist(
+            "alice_near".to_string(),
+            env::block_timestamp().saturating_add(100),
+            U128::from(1000),
+            5
+        );
         println!("Ok: {:?}", contract.get_whitelist(0, 10));
     }
 
@@ -181,7 +205,12 @@ mod tests {
         let context = get_context(false);
         testing_env!(context);
         let mut contract = default_launchpad_init("admin_near".to_string());
-        contract.add_whitelist("alice_near".to_string(), env::block_timestamp().saturating_add(100), U128::from(10));
+        contract.add_whitelist(
+            "alice_near".to_string(),
+            env::block_timestamp().saturating_add(100),
+            U128::from(10),
+            5
+        );
     }
 
     // #[test]
