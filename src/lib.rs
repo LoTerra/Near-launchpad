@@ -70,9 +70,11 @@ impl Launchpad {
         minting_limit: u8,
     ) {
         require!(env::signer_account_id() == self.admin, "Owner's method");
+        let account_id = AccountId::new_unchecked(address.clone());
+        require!(self.whitelist.get(&account_id).is_none(), "Address already exist");
 
         self.whitelist.insert(
-            &AccountId::new_unchecked(address.clone()),
+            &account_id,
             &WhitelistState {
                 restricted: false,
                 minting_start,
@@ -83,6 +85,10 @@ impl Launchpad {
 
         log!(format!("Whitelist user {}", address));
     }
+
+    /*
+        TODO: Add update whitelist only admin allowed
+     */
 
     pub fn get_whitelist(&self, from_index: u64, limit: u64) -> Vec<(AccountId, WhitelistState)> {
         let keys = self.whitelist.keys_as_vector();
