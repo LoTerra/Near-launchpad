@@ -1,15 +1,16 @@
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::UnorderedMap;
+use near_sdk::collections::{LookupMap, UnorderedMap};
 use near_sdk::json_types::U128;
 use near_sdk::{
     env, log, near_bindgen, require, AccountId, Balance, Gas, PromiseOrValue, Timestamp,
 };
+use std::borrow::Borrow;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct Launchpad {
-    // See more data types at https://doc.rust-lang.org/book/ch03-02-data-types.html
+    // Create whitelist storage key address => WhitelistState value
     whitelist: UnorderedMap<AccountId, WhitelistState>,
     minting_price: U128,
     admin: AccountId,
@@ -19,7 +20,8 @@ pub struct Launchpad {
     private_sale_start: u64,
     public_sale_start: u64,
     switch_off: bool,
-    // TODO: Create a storage key address => minted_amount value
+    // Create a storage key address => minted_amount value
+    minted: LookupMap<AccountId, u64>,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Debug)]
@@ -27,7 +29,7 @@ pub struct WhitelistState {
     restricted: bool,
     minting_start: Timestamp,
     minting_price: U128,
-    minting_limit: u8
+    minting_limit: u8,
 }
 
 #[near_bindgen]
@@ -56,6 +58,7 @@ impl Launchpad {
             private_sale_start,
             public_sale_start,
             switch_off: false,
+            minted: LookupMap::new(b"m"),
         }
     }
 
@@ -64,18 +67,17 @@ impl Launchpad {
         address: String,
         minting_start: Timestamp,
         minting_price: U128,
-        minting_limit: u8
+        minting_limit: u8,
     ) {
         require!(env::signer_account_id() == self.admin, "Owner's method");
 
-        // https://doc.rust-lang.org/std/primitive.i8.html#method.wrapping_add
         self.whitelist.insert(
             &AccountId::new_unchecked(address.clone()),
             &WhitelistState {
                 restricted: false,
                 minting_start,
                 minting_price,
-                minting_limit
+                minting_limit,
             },
         );
 
@@ -125,15 +127,43 @@ impl FungibleTokenReceiver for Launchpad {
                 // Verify if minting time have started otherwise refund
                 match env::block_timestamp() {
                     time if time > self.public_sale_start => {
-                        // TODO: Save the Sender to minted storage and increment the amount already minted
+                        // Save the Sender to minted storage and increment the amount already minted
+                        if self.minted.contains_key(&sender_id.clone().into()) {
+                            let amount_minted = self.minted.get(&sender_id.clone().into()).unwrap();
+                            self.minted
+                                .insert(&sender_id.into(), &amount_minted.saturating_add(1));
+                        } else {
+                            self.minted.insert(&sender_id.into(), &1);
+                        }
+                        // TODO: Mint the NFT pack and send it to the sender
+
                         PromiseOrValue::Value(U128::from(0))
-                    },
+                    }
                     time if time > self.private_sale_start => {
-                        // TODO: Verify the sender is on the whitelist
-                        // TODO: Verify the sender have not reached the minting limit
-                        // TODO: Save the Sender to minted storage and increment the amount already minted
+                        // Verify the sender is in the whitelist
+                        require!(
+                            self.whitelist.get(&sender_id).is_some(),
+                            "The address is not in the whitelist"
+                        );
+                        // Verify the sender have not reached the minting limit
+                        // Save the Sender to minted storage and increment the amount already minted
+                        let whitelist_user = self.whitelist.get(&sender_id).unwrap();
+                        require!(!whitelist_user.restricted, "Address have been restricted");
+                        if self.minted.contains_key(&sender_id.clone().into()) {
+                            let amount_minted = self.minted.get(&sender_id.clone().into()).unwrap();
+                            require!(
+                                u64::from(whitelist_user.minting_limit) < amount_minted,
+                                "Minting limit reached"
+                            );
+                            self.minted
+                                .insert(&sender_id.into(), &amount_minted.saturating_add(1));
+                        } else {
+                            self.minted.insert(&sender_id.into(), &1);
+                        }
+                        // TODO: Mint the NFT pack and send it to the sender
+
                         PromiseOrValue::Value(U128::from(0))
-                    },
+                    }
                     _ => {
                         log!("Sale have not started yet");
                         PromiseOrValue::Value(amount)
@@ -145,16 +175,6 @@ impl FungibleTokenReceiver for Launchpad {
                 PromiseOrValue::Value(amount)
             }
         }
-
-        //if self.private_sale_start < env::block_timestamp() {}
-
-        /*
-           TODO : If private sale started verify if sender is into whitelist
-        */
-        // TODO verify minting limit
-
-        // Finally
-        // TODO mint an NFT pack and send it to the sender
     }
 }
 
@@ -194,7 +214,7 @@ mod tests {
             "alice_near".to_string(),
             env::block_timestamp().saturating_add(100),
             U128::from(1000),
-            5
+            5,
         );
         println!("Ok: {:?}", contract.get_whitelist(0, 10));
     }
@@ -209,7 +229,7 @@ mod tests {
             "alice_near".to_string(),
             env::block_timestamp().saturating_add(100),
             U128::from(10),
-            5
+            5,
         );
     }
 
