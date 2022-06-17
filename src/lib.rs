@@ -90,6 +90,10 @@ impl Launchpad {
         TODO: Add update whitelist only admin allowed
      */
 
+    /*
+        TODO: Allow admin to withdraw collected funds out of the launchpad contract
+     */
+
     pub fn get_whitelist(&self, from_index: u64, limit: u64) -> Vec<(AccountId, WhitelistState)> {
         let keys = self.whitelist.keys_as_vector();
         let values = self.whitelist.values_as_vector();
