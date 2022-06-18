@@ -2,11 +2,13 @@ use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, UnorderedMap};
 use near_sdk::json_types::U128;
-use near_sdk::{env, log, near_bindgen, require, AccountId, PromiseOrValue, Timestamp, Promise, PanicOnDefault};
-use near_sdk::serde::{Serialize, Deserialize};
-use near_sdk::serde_json::json;
+use near_sdk::serde::{Deserialize, Serialize};
+use near_sdk::{
+    env, log, near_bindgen, require, AccountId, PanicOnDefault, Promise, PromiseOrValue, Timestamp,
+};
 
-const CODE: &[u8] = include_bytes!("../../NFT/target/wasm32-unknown-unknown/release/non_fungible_token.wasm");
+const CODE: &[u8] =
+    include_bytes!("../../NFT/target/wasm32-unknown-unknown/release/non_fungible_token.wasm");
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -25,7 +27,7 @@ pub struct Launchpad {
     minted: LookupMap<AccountId, u64>,
     nft_pack_contract: AccountId,
     // TODO: available mint and decrease on every mint
-    nft_pack_supply: u16
+    nft_pack_supply: u16,
 }
 
 #[near_bindgen]
@@ -48,8 +50,9 @@ impl Launchpad {
         dai_account_id: AccountId,
         private_sale_start: u64,
         public_sale_start: u64,
-    ) -> Promise {
-        log!("Custom counter initialization!");
+        nft_pack_supply: u16,
+    ) -> Self {
+        log!(format!("creator: {}", env::signer_account_id()));
         require!(
             private_sale_start < public_sale_start,
             "The private sale should start before the public sale"
@@ -58,22 +61,27 @@ impl Launchpad {
             Allows our contract to deploy the NFT pack contract as admin more info for
             dev help https://www.near-sdk.io/promises/deploy-contract
         */
-        let subaccount_id = AccountId::new_unchecked(
-            format!("nft_pack.{}", env::current_account_id())
-        );
+        let subaccount_id =
+            AccountId::new_unchecked(format!("nft_pack.{}", env::current_account_id()));
+
         Promise::new(subaccount_id.clone())
             .create_account()
+            .transfer(50_000_000_000_000_000_000_000_000)
             .add_full_access_key(env::signer_account_pk())
-            .deploy_contract(CODE.to_vec()).then(Promise::new(env::current_account_id()).function_call("set_state".to_string(), json!({}), 0, Default::default()))
-    }
+            .deploy_contract(CODE.to_vec());
+        // .function_call("set_state".to_string(),  json!({
+        //         "minting_price": minting_price,
+        //         "usdc_account_id": usdc_account_id,
+        //         "usdt_account_id": usdt_account_id,
+        //         "dai_account_id": dai_account_id,
+        //         "private_sale_start": private_sale_start,
+        //         "public_sale_start": public_sale_start,
+        //         "nft_pack_supply": nft_pack_supply,
+        //         "nft_pack_contract": subaccount_id
+        //     }).to_string()
+        //         .as_bytes()
+        //         .to_vec(), 0, Default::default());
 
-    #[private]
-    pub fn set_state(minting_price: U128,
-                     usdc_account_id: AccountId,
-                     usdt_account_id: AccountId,
-                     dai_account_id: AccountId,
-                     private_sale_start: u64,
-                     public_sale_start: u64) -> Self{
         Self {
             whitelist: UnorderedMap::new(b"s"),
             minting_price,
@@ -85,7 +93,8 @@ impl Launchpad {
             public_sale_start,
             switch_off: false,
             minted: LookupMap::new(b"m"),
-            nft_pack_contract: subaccount_id
+            nft_pack_contract: subaccount_id,
+            nft_pack_supply,
         }
     }
 
@@ -133,15 +142,12 @@ impl Launchpad {
     }
 
     /*
-        TODO: Query get minting info
-     */
-
-
+       TODO: Query get minting info
+    */
 
     #[private]
-    pub fn mint_result(){
+    pub fn mint_result() {
         require!(env::promise_results_count() == 1);
-
     }
 }
 
@@ -213,8 +219,21 @@ impl FungibleTokenReceiver for Launchpad {
                             self.minted.insert(&sender_id.into(), &1);
                         }
                         // TODO: Mint the NFT pack and send it to the sender
-                        let promise0 = env::promise_create(self.nft_pack_contract.clone(), "mint_token", &[], 0, Default::default());
-                        let promise1 = env::promise_then(promise0, env::current_account_id(), "mint_result", &[], 0, Default::default());
+                        let promise0 = env::promise_create(
+                            self.nft_pack_contract.clone(),
+                            "mint_token",
+                            &[],
+                            0,
+                            Default::default(),
+                        );
+                        let promise1 = env::promise_then(
+                            promise0,
+                            env::current_account_id(),
+                            "mint_result",
+                            &[],
+                            0,
+                            Default::default(),
+                        );
                         env::promise_return(promise1);
                         PromiseOrValue::Value(amount)
                     }
@@ -246,7 +265,7 @@ mod tests {
             .build()
     }
 
-    fn default_launchpad_init(admin: String) -> Launchpad {
+    fn default_launchpad_init(admin: String) -> Promise {
         self::Launchpad::new(
             U128::from(100),
             AccountId::new_unchecked("usdc_near".to_string()),
@@ -254,6 +273,7 @@ mod tests {
             AccountId::new_unchecked("dai_near".to_string()),
             100,
             200,
+            5000,
         )
     }
 
