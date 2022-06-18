@@ -2,12 +2,14 @@ use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, UnorderedMap};
 use near_sdk::json_types::U128;
-use near_sdk::{env, log, near_bindgen, require, AccountId, Balance, Gas, PromiseOrValue, Timestamp, Promise, ext_contract};
-use std::borrow::Borrow;
-use near_sdk::PromiseOrValue::Promise;
+use near_sdk::{env, log, near_bindgen, require, AccountId, PromiseOrValue, Timestamp, Promise, PanicOnDefault};
+use near_sdk::serde::{Serialize, Deserialize};
+use near_sdk::serde_json::json;
+
+const CODE: &[u8] = include_bytes!("../../NFT/target/wasm32-unknown-unknown/release/non_fungible_token.wasm");
 
 #[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize)]
+#[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Launchpad {
     // Create whitelist storage key address => WhitelistState value
     whitelist: UnorderedMap<AccountId, WhitelistState>,
@@ -21,10 +23,14 @@ pub struct Launchpad {
     switch_off: bool,
     // Create a storage key address => minted_amount value
     minted: LookupMap<AccountId, u64>,
-    nft_pack_contract: AccountId
+    nft_pack_contract: AccountId,
+    // TODO: available mint and decrease on every mint
+    nft_pack_supply: u16
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Debug)]
+#[near_bindgen]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug)]
+#[serde(crate = "near_sdk::serde")]
 pub struct WhitelistState {
     restricted: bool,
     minting_start: Timestamp,
@@ -42,12 +48,32 @@ impl Launchpad {
         dai_account_id: AccountId,
         private_sale_start: u64,
         public_sale_start: u64,
-    ) -> Self {
+    ) -> Promise {
         log!("Custom counter initialization!");
         require!(
             private_sale_start < public_sale_start,
             "The private sale should start before the public sale"
         );
+        /*
+            Allows our contract to deploy the NFT pack contract as admin more info for
+            dev help https://www.near-sdk.io/promises/deploy-contract
+        */
+        let subaccount_id = AccountId::new_unchecked(
+            format!("nft_pack.{}", env::current_account_id())
+        );
+        Promise::new(subaccount_id.clone())
+            .create_account()
+            .add_full_access_key(env::signer_account_pk())
+            .deploy_contract(CODE.to_vec()).then(Promise::new(env::current_account_id()).function_call("set_state".to_string(), json!({}), 0, Default::default()))
+    }
+
+    #[private]
+    pub fn set_state(minting_price: U128,
+                     usdc_account_id: AccountId,
+                     usdt_account_id: AccountId,
+                     dai_account_id: AccountId,
+                     private_sale_start: u64,
+                     public_sale_start: u64) -> Self{
         Self {
             whitelist: UnorderedMap::new(b"s"),
             minting_price,
@@ -59,10 +85,8 @@ impl Launchpad {
             public_sale_start,
             switch_off: false,
             minted: LookupMap::new(b"m"),
+            nft_pack_contract: subaccount_id
         }
-
-        /* TODO: allows our contract to deploy the NFT pack contract as admin more info for
-        dev help https://www.near-sdk.io/promises/deploy-contract*/
     }
 
     pub fn add_whitelist(
@@ -112,9 +136,11 @@ impl Launchpad {
         TODO: Query get minting info
      */
 
+
+
+    #[private]
     pub fn mint_result(){
-        require!(env::current_account_id() == env::predecessor_account_id());
-        require!(env::promise_result() == 1);
+        require!(env::promise_results_count() == 1);
 
     }
 }
