@@ -1,14 +1,18 @@
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
+use near_contract_standards::non_fungible_token::metadata::{NFTContractMetadata, TokenMetadata};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, UnorderedMap};
 use near_sdk::json_types::U128;
 use near_sdk::serde::{Deserialize, Serialize};
+use near_sdk::serde_json::json;
 use near_sdk::{
-    env, log, near_bindgen, require, AccountId, PanicOnDefault, Promise, PromiseOrValue, Timestamp,
+    env, log, near_bindgen, require, AccountId, Gas, PanicOnDefault, Promise, PromiseOrValue,
+    Timestamp,
 };
 
 const CODE: &[u8] =
     include_bytes!("../../NFT/target/wasm32-unknown-unknown/release/non_fungible_token.wasm");
+const DEFAULT_GAS: u64 = 100000000000000;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -63,24 +67,35 @@ impl Launchpad {
         */
         let subaccount_id =
             AccountId::new_unchecked(format!("nft_pack.{}", env::current_account_id()));
+        let current_accout = env::current_account_id();
+
+        let metadata = NFTContractMetadata {
+            spec: "nft-1.0.0".to_string(),
+            name: "test".to_string(),
+            symbol: "PACK".to_string(),
+            icon: None,
+            base_uri: None,
+            reference: None,
+            reference_hash: None,
+        };
 
         Promise::new(subaccount_id.clone())
             .create_account()
             .transfer(50_000_000_000_000_000_000_000_000)
             .add_full_access_key(env::signer_account_pk())
-            .deploy_contract(CODE.to_vec());
-        // .function_call("set_state".to_string(),  json!({
-        //         "minting_price": minting_price,
-        //         "usdc_account_id": usdc_account_id,
-        //         "usdt_account_id": usdt_account_id,
-        //         "dai_account_id": dai_account_id,
-        //         "private_sale_start": private_sale_start,
-        //         "public_sale_start": public_sale_start,
-        //         "nft_pack_supply": nft_pack_supply,
-        //         "nft_pack_contract": subaccount_id
-        //     }).to_string()
-        //         .as_bytes()
-        //         .to_vec(), 0, Default::default());
+            .deploy_contract(CODE.to_vec())
+            .function_call(
+                "new".to_string(),
+                json!({
+                    "owner_id":  current_accout,
+                    "metadata": metadata
+                })
+                .to_string()
+                .as_bytes()
+                .to_vec(),
+                0,
+                Gas::from(DEFAULT_GAS),
+            );
 
         Self {
             whitelist: UnorderedMap::new(b"s"),
@@ -180,6 +195,23 @@ impl FungibleTokenReceiver for Launchpad {
             msg
         );
 
+        let token_metadata = TokenMetadata {
+            title: None,
+            description: None,
+            media: None,
+            media_hash: None,
+            copies: None,
+            issued_at: None,
+            expires_at: None,
+            starts_at: None,
+            updated_at: None,
+            extra: None,
+            reference: None,
+            reference_hash: None,
+        };
+        let token_id = self.nft_pack_supply.to_string();
+        let receiver_id = sender_id;
+
         match msg.as_str() {
             "buy_ticket" => {
                 // Verify if minting time have started otherwise refund
@@ -194,6 +226,28 @@ impl FungibleTokenReceiver for Launchpad {
                             self.minted.insert(&sender_id.into(), &1);
                         }
                         // TODO: Mint the NFT pack and send it to the sender
+                        let promise0 = env::promise_create(
+                            self.nft_pack_contract.clone(),
+                            "nft_mint",
+                            json!({
+                                "token_id": token_id,
+                                "receiver_id": receiver_id,
+                                "token_metadata": token_metadata
+                            })
+                            .to_string()
+                            .as_bytes(),
+                            0,
+                            Gas::from(DEFAULT_GAS),
+                        );
+                        let promise1 = env::promise_then(
+                            promise0,
+                            env::current_account_id(),
+                            "mint_result",
+                            &[],
+                            0,
+                            Gas::from(DEFAULT_GAS),
+                        );
+                        env::promise_return(promise1);
 
                         PromiseOrValue::Value(U128::from(0))
                     }
@@ -221,10 +275,16 @@ impl FungibleTokenReceiver for Launchpad {
                         // TODO: Mint the NFT pack and send it to the sender
                         let promise0 = env::promise_create(
                             self.nft_pack_contract.clone(),
-                            "mint_token",
-                            &[],
+                            "nft_mint",
+                            json!({
+                                "token_id": token_id,
+                                "receiver_id": receiver_id,
+                                "token_metadata": token_metadata
+                            })
+                            .to_string()
+                            .as_bytes(),
                             0,
-                            Default::default(),
+                            Gas::from(DEFAULT_GAS),
                         );
                         let promise1 = env::promise_then(
                             promise0,
@@ -232,10 +292,10 @@ impl FungibleTokenReceiver for Launchpad {
                             "mint_result",
                             &[],
                             0,
-                            Default::default(),
+                            Gas::from(DEFAULT_GAS),
                         );
                         env::promise_return(promise1);
-                        PromiseOrValue::Value(amount)
+                        PromiseOrValue::Value(U128::from(0))
                     }
                     _ => {
                         log!("Sale have not started yet");
