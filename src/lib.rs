@@ -167,8 +167,8 @@ impl Launchpad {
     }
 }
 /*
-    TODO: Allows multiple mint at same time with a loop
- */
+   TODO: Allows multiple mint at same time with a loop
+*/
 #[near_bindgen]
 impl FungibleTokenReceiver for Launchpad {
     fn ft_on_transfer(
@@ -198,6 +198,7 @@ impl FungibleTokenReceiver for Launchpad {
             msg
         );
 
+        // Mint info start
         let token_metadata = TokenMetadata {
             title: None,
             description: None,
@@ -214,6 +215,7 @@ impl FungibleTokenReceiver for Launchpad {
         };
         let token_id = self.nft_pack_supply.to_string();
         let receiver_id = sender_id;
+        // Mint info end
 
         match msg.as_str() {
             "buy_ticket" => {
