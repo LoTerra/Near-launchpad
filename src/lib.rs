@@ -5,7 +5,10 @@ use near_sdk::collections::{LookupMap, UnorderedMap};
 use near_sdk::json_types::U128;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::serde_json::json;
-use near_sdk::{env, log, near_bindgen, require, AccountId, Gas, PanicOnDefault, Promise, PromiseOrValue, Timestamp, Balance, serde_json};
+use near_sdk::{
+    env, log, near_bindgen, require, serde_json, AccountId, Balance, Gas, PanicOnDefault, Promise,
+    PromiseOrValue, Timestamp,
+};
 
 const CODE: &[u8] =
     include_bytes!("../../NFT/target/wasm32-unknown-unknown/release/non_fungible_token.wasm");
@@ -41,15 +44,12 @@ pub struct WhitelistState {
     minting_limit: u8,
 }
 
-
 #[derive(Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 #[serde(untagged)]
 enum TokenReceiverMessage {
     /// Reserve an NFT.
-    Reserve {
-        nft_amount: u64,
-    },
+    Reserve { nft_amount: u64 },
 }
 
 #[near_bindgen]
@@ -226,103 +226,105 @@ impl FungibleTokenReceiver for Launchpad {
         let token_id = self.nft_pack_supply.to_string();
         let receiver_id = sender_id.clone();
 
-
-        let message =
-            serde_json::from_str::<TokenReceiverMessage>(&msg).expect("Illegal msg in ft_transfer_call");
-        // Mint info end
-        match message {
-            TokenReceiverMessage::Reserve { nft_amount } => {
-                match env::block_timestamp() {
-                    time if time > self.public_sale_start => {
-                        // Save the Sender to minted storage and increment the amount already minted
-                        if self.minted.contains_key(&sender_id.clone().into()) {
-                            let amount_minted = self.minted.get(&sender_id.clone().into()).unwrap();
-                            self.minted
-                                .insert(&sender_id.into(), &amount_minted.saturating_add(1));
-                        } else {
-                            self.minted.insert(&sender_id.into(), &1);
-                        }
-                        // TODO: Mint the NFT pack and send it to the sender
-                        let promise0 = env::promise_create(
-                            self.nft_pack_contract.clone(),
-                            "nft_mint",
-                            json!({
-                                "token_id": token_id,
-                                "receiver_id": receiver_id,
-                                "token_metadata": token_metadata
-                            })
+        if msg.is_empty() {
+            log!("Illegal msg in ft_transfer_call");
+            PromiseOrValue::Value(amount)
+        } else {
+            let message = serde_json::from_str::<TokenReceiverMessage>(&msg)
+                .expect("Illegal msg in ft_transfer_call");
+            // Mint info end
+            match message {
+                TokenReceiverMessage::Reserve { nft_amount } => {
+                    match env::block_timestamp() {
+                        time if time > self.public_sale_start => {
+                            // Save the Sender to minted storage and increment the amount already minted
+                            if self.minted.contains_key(&sender_id.clone().into()) {
+                                let amount_minted =
+                                    self.minted.get(&sender_id.clone().into()).unwrap();
+                                self.minted
+                                    .insert(&sender_id.into(), &amount_minted.saturating_add(1));
+                            } else {
+                                self.minted.insert(&sender_id.into(), &1);
+                            }
+                            // TODO: Mint the NFT pack and send it to the sender
+                            let promise0 = env::promise_create(
+                                self.nft_pack_contract.clone(),
+                                "nft_mint",
+                                json!({
+                                    "token_id": token_id,
+                                    "receiver_id": receiver_id,
+                                    "token_metadata": token_metadata
+                                })
                                 .to_string()
                                 .as_bytes(),
-                            0,
-                            Gas::from(DEFAULT_GAS),
-                        );
-                        let promise1 = env::promise_then(
-                            promise0,
-                            env::current_account_id(),
-                            "mint_result",
-                            &[],
-                            0,
-                            Gas::from(DEFAULT_GAS),
-                        );
-                        env::promise_return(promise1);
-
-                        PromiseOrValue::Value(U128::from(0))
-                    }
-                    time if time > self.private_sale_start => {
-                        // Verify the sender is in the whitelist
-                        require!(
-                            self.whitelist.get(&sender_id).is_some(),
-                            "The address is not in the whitelist"
-                        );
-                        // Verify the sender have not reached the minting limit
-                        // Save the Sender to minted storage and increment the amount already minted
-                        let whitelist_user = self.whitelist.get(&sender_id).unwrap();
-                        require!(!whitelist_user.restricted, "Address have been restricted");
-                        if self.minted.contains_key(&sender_id.clone().into()) {
-                            let amount_minted = self.minted.get(&sender_id.clone().into()).unwrap();
-                            require!(
-                                u64::from(whitelist_user.minting_limit) < amount_minted,
-                                "Minting limit reached"
+                                0,
+                                Gas::from(DEFAULT_GAS),
                             );
-                            self.minted
-                                .insert(&sender_id.into(), &amount_minted.saturating_add(1));
-                        } else {
-                            self.minted.insert(&sender_id.into(), &1);
+                            let promise1 = env::promise_then(
+                                promise0,
+                                env::current_account_id(),
+                                "mint_result",
+                                &[],
+                                0,
+                                Gas::from(DEFAULT_GAS),
+                            );
+                            env::promise_return(promise1);
+
+                            PromiseOrValue::Value(U128::from(0))
                         }
-                        // TODO: Mint the NFT pack and send it to the sender
-                        let promise0 = env::promise_create(
-                            self.nft_pack_contract.clone(),
-                            "nft_mint",
-                            json!({
-                                "token_id": token_id,
-                                "receiver_id": receiver_id,
-                                "token_metadata": token_metadata
-                            })
+                        time if time > self.private_sale_start => {
+                            // Verify the sender is in the whitelist
+                            require!(
+                                self.whitelist.get(&sender_id).is_some(),
+                                "The address is not in the whitelist"
+                            );
+                            // Verify the sender have not reached the minting limit
+                            // Save the Sender to minted storage and increment the amount already minted
+                            let whitelist_user = self.whitelist.get(&sender_id).unwrap();
+                            require!(!whitelist_user.restricted, "Address have been restricted");
+                            if self.minted.contains_key(&sender_id.clone().into()) {
+                                let amount_minted =
+                                    self.minted.get(&sender_id.clone().into()).unwrap();
+                                require!(
+                                    u64::from(whitelist_user.minting_limit) < amount_minted,
+                                    "Minting limit reached"
+                                );
+                                self.minted
+                                    .insert(&sender_id.into(), &amount_minted.saturating_add(1));
+                            } else {
+                                self.minted.insert(&sender_id.into(), &1);
+                            }
+                            // TODO: Mint the NFT pack and send it to the sender
+                            let promise0 = env::promise_create(
+                                self.nft_pack_contract.clone(),
+                                "nft_mint",
+                                json!({
+                                    "token_id": token_id,
+                                    "receiver_id": receiver_id,
+                                    "token_metadata": token_metadata
+                                })
                                 .to_string()
                                 .as_bytes(),
-                            0,
-                            Gas::from(DEFAULT_GAS),
-                        );
-                        let promise1 = env::promise_then(
-                            promise0,
-                            env::current_account_id(),
-                            "mint_result",
-                            &[],
-                            0,
-                            Gas::from(DEFAULT_GAS),
-                        );
-                        env::promise_return(promise1);
-                        PromiseOrValue::Value(U128::from(0))
-                    }
-                    _ => {
-                        log!("Sale have not started yet");
-                        PromiseOrValue::Value(amount)
+                                0,
+                                Gas::from(DEFAULT_GAS),
+                            );
+                            let promise1 = env::promise_then(
+                                promise0,
+                                env::current_account_id(),
+                                "mint_result",
+                                &[],
+                                0,
+                                Gas::from(DEFAULT_GAS),
+                            );
+                            env::promise_return(promise1);
+                            PromiseOrValue::Value(U128::from(0))
+                        }
+                        _ => {
+                            log!("Sale have not started yet");
+                            PromiseOrValue::Value(amount)
+                        }
                     }
                 }
-            },
-            _ => {
-                log!("Invalid instruction for launchpad call");
-                PromiseOrValue::Value(amount)
             }
         }
         // match msg.as_str() {
@@ -420,7 +422,7 @@ impl FungibleTokenReceiver for Launchpad {
         //         log!("Invalid instruction for launchpad call");
         //         PromiseOrValue::Value(amount)
         //     }
-        }
+        // }
     }
 }
 
