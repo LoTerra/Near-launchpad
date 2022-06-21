@@ -161,11 +161,14 @@ impl Launchpad {
     */
 
     #[private]
-    pub fn mint_result() {
+    pub fn mint_result(&mut self) {
         require!(env::promise_results_count() == 1);
+        self.nft_pack_supply = self.nft_pack_supply - 1;
     }
 }
-
+/*
+    TODO: Allows multiple mint at same time with a loop
+ */
 #[near_bindgen]
 impl FungibleTokenReceiver for Launchpad {
     fn ft_on_transfer(
