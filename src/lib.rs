@@ -214,7 +214,7 @@ impl FungibleTokenReceiver for Launchpad {
             reference_hash: None,
         };
         let token_id = self.nft_pack_supply.to_string();
-        let receiver_id = sender_id;
+        let receiver_id = sender_id.clone();
         // Mint info end
 
         match msg.as_str() {
