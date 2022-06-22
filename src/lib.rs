@@ -1,3 +1,5 @@
+mod helpers;
+use crate::helpers::promise_mint_pack;
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_contract_standards::non_fungible_token::metadata::{NFTContractMetadata, TokenMetadata};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
@@ -29,6 +31,7 @@ pub struct Launchpad {
     switch_off: bool,
     // Create a storage key address => minted_amount value
     minted: LookupMap<AccountId, u64>,
+    deposits: LookupMap<AccountId, U128>,
     nft_pack_contract: AccountId,
     // TODO: available mint and decrease on every mint
     nft_pack_supply: u16,
@@ -116,6 +119,7 @@ impl Launchpad {
             public_sale_start,
             switch_off: false,
             minted: LookupMap::new(b"m"),
+            deposits: LookupMap::new(b"d"),
             nft_pack_contract: subaccount_id,
             nft_pack_supply,
         }
@@ -148,12 +152,45 @@ impl Launchpad {
         log!(format!("Whitelist user {}", address));
     }
 
+    #[payable]
+    pub fn deposit_fund(&mut self, account: Option<AccountId>) {
+        log!("Deposited {}YoctoNear", env::attached_deposit());
+        let account_id = account.unwrap_or(env::signer_account_id());
+        let deposit = U128::from(env::attached_deposit());
+
+        if self.deposits.contains_key(&account_id.clone().into()) {
+            let balance = self.deposits.get(&account_id.clone().into()).unwrap();
+            self.deposits.insert(
+                &account_id.into(),
+                &U128::from(deposit.0.saturating_add(balance.0)),
+            );
+        } else {
+            self.deposits.insert(&account_id.into(), &deposit);
+        }
+    }
+    pub fn withdraw_all_funds(&mut self) -> Promise {
+        let account = env::signer_account_id();
+        require!(
+            self.deposits.contains_key(&account.clone().into()),
+            "No account found"
+        );
+        let balance = self.deposits.get(&account.clone().into()).unwrap();
+        require!(balance > U128::from(0), "Empty balance");
+        self.deposits.remove(&account.clone().into());
+
+        Promise::new(account).transfer(balance.0)
+    }
+
     /*
        TODO: Add update whitelist only admin allowed
     */
 
     /*
        TODO: Allow admin to withdraw collected funds out of the launchpad contract
+    */
+
+    /*
+       TODO: Allow users to check their deposited amount
     */
 
     pub fn get_whitelist(&self, from_index: u64, limit: u64) -> Vec<(AccountId, WhitelistState)> {
@@ -177,13 +214,11 @@ impl Launchpad {
 
         log!("GOOD refunded amount: {:?}", balance);
         self.nft_pack_supply = self.nft_pack_supply.wrapping_sub(1);
-
     }
 }
 /*
    TODO: Allows multiple mint at same time with a loop
 */
-const MINT_STORAGE_COST: u128 = 5870000000000000000000;
 #[near_bindgen]
 impl FungibleTokenReceiver for Launchpad {
     fn ft_on_transfer(
@@ -199,8 +234,8 @@ impl FungibleTokenReceiver for Launchpad {
             "Only allowed NF contracts can call this message"
         );
         /*
-            TODO: USDC & USDT are 6 decimals but DAI are 18 decimals. We need to do extra checks
-         */
+           TODO: USDC & USDT are 6 decimals but DAI are 18 decimals. We need to do extra checks
+        */
 
         // Verify the amount sent match with minting cost
         require!(
@@ -257,30 +292,38 @@ impl FungibleTokenReceiver for Launchpad {
                             }
 
                             // TODO: Mint the NFT pack and send it to the sender
-                            let promise0 = env::promise_create(
+                            promise_mint_pack(
                                 self.nft_pack_contract.clone(),
-                                "nft_mint",
-                                json!({
-                                    "token_id": token_id,
-                                    "receiver_id": receiver_id,
-                                    "token_metadata": token_metadata,
-                                    "refund_id": receiver_id
-                                })
-                                .to_string()
-                                .as_bytes(),
-                                U128::from(9870000000000000000000).0,
                                 Gas::from(DEFAULT_GAS),
+                                token_id,
+                                receiver_id,
+                                token_metadata,
                             );
 
-                            let promise1 = env::promise_then(
-                                promise0,
-                                env::current_account_id(),
-                                "mint_result",
-                                &[],
-                                0,
-                                Gas::from(DEFAULT_GAS),
-                            );
-                            env::promise_return(promise1);
+                            // let promise0 = env::promise_create(
+                            //     self.nft_pack_contract.clone(),
+                            //     "nft_mint",
+                            //     json!({
+                            //         "token_id": token_id,
+                            //         "receiver_id": receiver_id,
+                            //         "token_metadata": token_metadata,
+                            //         "refund_id": receiver_id
+                            //     })
+                            //     .to_string()
+                            //     .as_bytes(),
+                            //     U128::from(9870000000000000000000).0,
+                            //     Gas::from(DEFAULT_GAS),
+                            // );
+                            //
+                            // let promise1 = env::promise_then(
+                            //     promise0,
+                            //     env::current_account_id(),
+                            //     "mint_result",
+                            //     &[],
+                            //     0,
+                            //     Gas::from(DEFAULT_GAS),
+                            // );
+                            // env::promise_return(promise1);
 
                             PromiseOrValue::Value(U128::from(0))
                         }
@@ -307,28 +350,35 @@ impl FungibleTokenReceiver for Launchpad {
                                 self.minted.insert(&sender_id.into(), &1);
                             }
                             // TODO: Mint the NFT pack and send it to the sender
-                            let promise0 = env::promise_create(
+                            promise_mint_pack(
                                 self.nft_pack_contract.clone(),
-                                "nft_mint",
-                                json!({
-                                    "token_id": token_id,
-                                    "receiver_id": receiver_id,
-                                    "token_metadata": token_metadata
-                                })
-                                .to_string()
-                                .as_bytes(),
-                                0,
                                 Gas::from(DEFAULT_GAS),
+                                token_id,
+                                receiver_id,
+                                token_metadata,
                             );
-                            let promise1 = env::promise_then(
-                                promise0,
-                                env::current_account_id(),
-                                "mint_result",
-                                &[],
-                                0,
-                                Gas::from(DEFAULT_GAS),
-                            );
-                            env::promise_return(promise1);
+                            // let promise0 = env::promise_create(
+                            //     self.nft_pack_contract.clone(),
+                            //     "nft_mint",
+                            //     json!({
+                            //         "token_id": token_id,
+                            //         "receiver_id": receiver_id,
+                            //         "token_metadata": token_metadata
+                            //     })
+                            //     .to_string()
+                            //     .as_bytes(),
+                            //     0,
+                            //     Gas::from(DEFAULT_GAS),
+                            // );
+                            // let promise1 = env::promise_then(
+                            //     promise0,
+                            //     env::current_account_id(),
+                            //     "mint_result",
+                            //     &[],
+                            //     0,
+                            //     Gas::from(DEFAULT_GAS),
+                            // );
+                            // env::promise_return(promise1);
                             PromiseOrValue::Value(U128::from(0))
                         }
                         _ => {
