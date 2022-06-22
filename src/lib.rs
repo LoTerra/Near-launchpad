@@ -153,7 +153,7 @@ impl Launchpad {
     }
 
     #[payable]
-    pub fn deposit_fund(&mut self, account: Option<AccountId>) {
+    pub fn storage_deposit(&mut self, account: Option<AccountId>) {
         log!("Deposited {}YoctoNear", env::attached_deposit());
         let account_id = account.unwrap_or(env::signer_account_id());
         let deposit = U128::from(env::attached_deposit());
@@ -168,7 +168,7 @@ impl Launchpad {
             self.deposits.insert(&account_id.into(), &deposit);
         }
     }
-    pub fn withdraw_all_funds(&mut self) -> Promise {
+    pub fn storage_withdraw_all(&mut self) -> Promise {
         let account = env::signer_account_id();
         require!(
             self.deposits.contains_key(&account.clone().into()),
