@@ -74,7 +74,7 @@ impl Launchpad {
             dev help https://www.near-sdk.io/promises/deploy-contract
         */
         let subaccount_id =
-            AccountId::new_unchecked(format!("nft_pack3.{}", env::current_account_id()));
+            AccountId::new_unchecked(format!("nft_pack6.{}", env::current_account_id()));
         let current_accout = env::current_account_id();
 
         let metadata = NFTContractMetadata {
@@ -172,13 +172,18 @@ impl Launchpad {
     pub fn mint_result(&mut self) {
         //require!(env::promise_result() == 1);
         require!(env::promise_results_count() == 1);
-        log!("GOOD");
+
+        let balance = env::attached_deposit();
+
+        log!("GOOD refunded amount: {:?}", balance);
         self.nft_pack_supply = self.nft_pack_supply.wrapping_sub(1);
+
     }
 }
 /*
    TODO: Allows multiple mint at same time with a loop
 */
+const MINT_STORAGE_COST: u128 = 5870000000000000000000;
 #[near_bindgen]
 impl FungibleTokenReceiver for Launchpad {
     fn ft_on_transfer(
@@ -193,6 +198,10 @@ impl FungibleTokenReceiver for Launchpad {
                 || self.usdt_account_id == env::predecessor_account_id(),
             "Only allowed NF contracts can call this message"
         );
+        /*
+            TODO: USDC & USDT are 6 decimals but DAI are 18 decimals. We need to do extra checks
+         */
+
         // Verify the amount sent match with minting cost
         require!(
             amount == self.minting_price,
@@ -227,7 +236,7 @@ impl FungibleTokenReceiver for Launchpad {
         let receiver_id = sender_id.clone();
 
         if msg.is_empty() {
-            log!("Illegal msg in ft_transfer_call");
+            log!("Missing msg in ft_transfer_call");
             PromiseOrValue::Value(amount)
         } else {
             let message = serde_json::from_str::<TokenReceiverMessage>(&msg)
@@ -246,6 +255,7 @@ impl FungibleTokenReceiver for Launchpad {
                             } else {
                                 self.minted.insert(&sender_id.into(), &1);
                             }
+
                             // TODO: Mint the NFT pack and send it to the sender
                             let promise0 = env::promise_create(
                                 self.nft_pack_contract.clone(),
@@ -253,13 +263,15 @@ impl FungibleTokenReceiver for Launchpad {
                                 json!({
                                     "token_id": token_id,
                                     "receiver_id": receiver_id,
-                                    "token_metadata": token_metadata
+                                    "token_metadata": token_metadata,
+                                    "refund_id": receiver_id
                                 })
                                 .to_string()
                                 .as_bytes(),
-                                0,
+                                U128::from(9870000000000000000000).0,
                                 Gas::from(DEFAULT_GAS),
                             );
+
                             let promise1 = env::promise_then(
                                 promise0,
                                 env::current_account_id(),
