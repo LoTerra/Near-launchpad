@@ -8,8 +8,8 @@ use near_sdk::json_types::U128;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::serde_json::json;
 use near_sdk::{
-    env, log, near_bindgen, require, serde_json, AccountId, Balance, Gas, PanicOnDefault, Promise,
-    PromiseOrValue, Timestamp,
+    assert_one_yocto, env, log, near_bindgen, require, serde_json, AccountId, Balance, Gas,
+    PanicOnDefault, Promise, PromiseOrValue, Timestamp,
 };
 
 const CODE: &[u8] =
@@ -54,6 +54,7 @@ enum TokenReceiverMessage {
     /// Reserve an NFT.
     Reserve { nft_amount: u64 },
 }
+const MINT_STORAGE_COST: u128 = 5870000000000000000000;
 
 #[near_bindgen]
 impl Launchpad {
@@ -152,8 +153,13 @@ impl Launchpad {
         log!(format!("Whitelist user {}", address));
     }
 
+
     #[payable]
     pub fn storage_deposit(&mut self, account: Option<AccountId>) {
+        require!(
+            env::attached_deposit() >= MINT_STORAGE_COST,
+            format!("Requires minimum deposit of {}", MINT_STORAGE_COST)
+        );
         log!("Deposited {}YoctoNear", env::attached_deposit());
         let account_id = account.unwrap_or(env::signer_account_id());
         let deposit = U128::from(env::attached_deposit());
@@ -169,7 +175,9 @@ impl Launchpad {
             self.deposits.insert(&account_id, &deposit);
         }
     }
+    #[payable]
     pub fn storage_withdraw_all(&mut self) -> Promise {
+        assert_one_yocto();
         let account = env::signer_account_id();
         require!(
             self.deposits.contains_key(&account.clone()),
