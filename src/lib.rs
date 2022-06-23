@@ -77,7 +77,7 @@ impl Launchpad {
             dev help https://www.near-sdk.io/promises/deploy-contract
         */
         let subaccount_id =
-            AccountId::new_unchecked(format!("nft_pack6.{}", env::current_account_id()));
+            AccountId::new_unchecked(format!("nft_pack8.{}", env::current_account_id()));
         let current_accout = env::current_account_id();
 
         let metadata = NFTContractMetadata {
@@ -158,25 +158,31 @@ impl Launchpad {
         let account_id = account.unwrap_or(env::signer_account_id());
         let deposit = U128::from(env::attached_deposit());
 
-        if self.deposits.contains_key(&account_id.clone().into()) {
-            let balance = self.deposits.get(&account_id.clone().into()).unwrap();
+        if self.deposits.contains_key(&account_id.clone()) {
+            let balance = self.deposits.get(&account_id.clone()).unwrap();
             self.deposits.insert(
-                &account_id.into(),
+                &account_id,
                 &U128::from(deposit.0.saturating_add(balance.0)),
             );
+            log!("Balance {}YoctoNear", deposit.0.saturating_add(balance.0));
         } else {
-            self.deposits.insert(&account_id.into(), &deposit);
+            self.deposits.insert(&account_id, &deposit);
         }
     }
     pub fn storage_withdraw_all(&mut self) -> Promise {
         let account = env::signer_account_id();
         require!(
-            self.deposits.contains_key(&account.clone().into()),
+            self.deposits.contains_key(&account.clone()),
             "No account found"
         );
-        let balance = self.deposits.get(&account.clone().into()).unwrap();
+        let balance = self.deposits.get(&account.clone()).unwrap();
         require!(balance > U128::from(0), "Empty balance");
         self.deposits.remove(&account.clone().into());
+        log!(
+            "Withdraw all storage ({}YoctoNear to {})",
+            balance.0,
+            account
+        );
 
         Promise::new(account).transfer(balance.0)
     }

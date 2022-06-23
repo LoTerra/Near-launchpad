@@ -1,4 +1,5 @@
 use near_contract_standards::non_fungible_token::metadata::TokenMetadata;
+use near_sdk::json_types::U128;
 use near_sdk::serde_json::json;
 use near_sdk::{env, AccountId, Balance, Gas, Promise};
 
@@ -21,7 +22,7 @@ pub(crate) fn promise_mint_pack(
         })
         .to_string()
         .as_bytes(),
-        0,
+        U128::from(MINT_STORAGE_COST).0,
         default_gas,
     );
     let promise1 = env::promise_then(
