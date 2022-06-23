@@ -8,13 +8,13 @@ use near_sdk::json_types::U128;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::serde_json::json;
 use near_sdk::{
-    assert_one_yocto, env, log, near_bindgen, require, serde_json, AccountId, Balance, Gas,
+    assert_one_yocto, env, log, near_bindgen, require, serde_json, AccountId, Gas,
     PanicOnDefault, Promise, PromiseOrValue, Timestamp,
 };
 
 const CODE: &[u8] =
     include_bytes!("../../NFT/target/wasm32-unknown-unknown/release/non_fungible_token.wasm");
-const DEFAULT_GAS: u64 = 100000000000000;
+const DEFAULT_GAS: u64 = 5_000_000_000_000;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -31,7 +31,7 @@ pub struct Launchpad {
     switch_off: bool,
     // Create a storage key address => minted_amount value
     minted: LookupMap<AccountId, u64>,
-    deposits: LookupMap<AccountId, U128>,
+    storage_deposits: LookupMap<AccountId, U128>,
     nft_pack_contract: AccountId,
     // TODO: available mint and decrease on every mint
     nft_pack_supply: u16,
@@ -120,7 +120,7 @@ impl Launchpad {
             public_sale_start,
             switch_off: false,
             minted: LookupMap::new(b"m"),
-            deposits: LookupMap::new(b"d"),
+            storage_deposits: LookupMap::new(b"d"),
             nft_pack_contract: subaccount_id,
             nft_pack_supply,
         }
@@ -153,7 +153,6 @@ impl Launchpad {
         log!(format!("Whitelist user {}", address));
     }
 
-
     #[payable]
     pub fn storage_deposit(&mut self, account: Option<AccountId>) {
         require!(
@@ -164,15 +163,16 @@ impl Launchpad {
         let account_id = account.unwrap_or(env::signer_account_id());
         let deposit = U128::from(env::attached_deposit());
 
-        if self.deposits.contains_key(&account_id.clone()) {
-            let balance = self.deposits.get(&account_id.clone()).unwrap();
-            self.deposits.insert(
-                &account_id,
+        if self.storage_deposits.contains_key(&account_id.clone().into()) {
+            let balance = self.storage_deposits.get(&account_id.clone().into()).unwrap();
+            self.storage_deposits.insert(
+                &account_id.clone().into(),
                 &U128::from(deposit.0.saturating_add(balance.0)),
             );
+
             log!("Balance {}YoctoNear", deposit.0.saturating_add(balance.0));
         } else {
-            self.deposits.insert(&account_id, &deposit);
+            self.storage_deposits.insert(&account_id.into(), &deposit);
         }
     }
     #[payable]
@@ -180,12 +180,12 @@ impl Launchpad {
         assert_one_yocto();
         let account = env::signer_account_id();
         require!(
-            self.deposits.contains_key(&account.clone()),
+            self.storage_deposits.contains_key(&account.clone().into()),
             "No account found"
         );
-        let balance = self.deposits.get(&account.clone()).unwrap();
+        let balance = self.storage_deposits.get(&account.clone().into()).unwrap();
         require!(balance > U128::from(0), "Empty balance");
-        self.deposits.remove(&account.clone().into());
+        self.storage_deposits.remove(&account.clone().into());
         log!(
             "Withdraw all storage ({}YoctoNear to {})",
             balance.0,
@@ -293,6 +293,9 @@ impl FungibleTokenReceiver for Launchpad {
             // Mint info end
             match message {
                 TokenReceiverMessage::Reserve { nft_amount } => {
+                    let storage_deposit = self.storage_deposits.get(&sender_id.clone());
+                    require!(storage_deposit.is_some(), "Action required deposit Near for storage");
+
                     match env::block_timestamp() {
                         time if time > self.public_sale_start => {
                             // Save the Sender to minted storage and increment the amount already minted
@@ -300,20 +303,26 @@ impl FungibleTokenReceiver for Launchpad {
                                 let amount_minted =
                                     self.minted.get(&sender_id.clone().into()).unwrap();
                                 self.minted
-                                    .insert(&sender_id.into(), &amount_minted.saturating_add(1));
+                                    .insert(&sender_id.clone().into(), &amount_minted.saturating_add(1));
                             } else {
-                                self.minted.insert(&sender_id.into(), &1);
+                                self.minted.insert(&sender_id.clone().into(), &1);
                             }
 
                             // TODO: Mint the NFT pack and send it to the sender
-                            promise_mint_pack(
+                            let used_storage_deposit = promise_mint_pack(
                                 self.nft_pack_contract.clone(),
-                                Gas::from(DEFAULT_GAS),
                                 token_id,
                                 receiver_id,
                                 token_metadata,
+                                nft_amount,
+                                env::current_account_id(),
+                                storage_deposit.unwrap_or(U128::from(0))
                             );
 
+                            self.storage_deposits.insert(
+                                &sender_id.clone().into(),
+                                &U128::from(storage_deposit.unwrap_or(U128::from(0)).0.saturating_sub(used_storage_deposit)),
+                            );
                             // let promise0 = env::promise_create(
                             //     self.nft_pack_contract.clone(),
                             //     "nft_mint",
@@ -359,18 +368,25 @@ impl FungibleTokenReceiver for Launchpad {
                                     "Minting limit reached"
                                 );
                                 self.minted
-                                    .insert(&sender_id.into(), &amount_minted.saturating_add(1));
+                                    .insert(&sender_id.clone().into(), &amount_minted.saturating_add(1));
                             } else {
-                                self.minted.insert(&sender_id.into(), &1);
+                                self.minted.insert(&sender_id.clone().into(), &1);
                             }
                             // TODO: Mint the NFT pack and send it to the sender
-                            promise_mint_pack(
+                            let used_storage_deposit = promise_mint_pack(
                                 self.nft_pack_contract.clone(),
-                                Gas::from(DEFAULT_GAS),
                                 token_id,
                                 receiver_id,
                                 token_metadata,
+                                nft_amount,
+                                env::current_account_id(),
+                                storage_deposit.unwrap_or(U128::from(0))
                             );
+                            self.storage_deposits.insert(
+                                &sender_id.clone().into(),
+                                &U128::from(storage_deposit.unwrap_or(U128::from(0)).0.saturating_sub(used_storage_deposit)),
+                            );
+
                             // let promise0 = env::promise_create(
                             //     self.nft_pack_contract.clone(),
                             //     "nft_mint",
