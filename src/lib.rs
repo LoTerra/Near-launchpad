@@ -170,7 +170,7 @@ impl Launchpad {
             let balance = self
                 .storage_deposits
                 .get(&account_id.clone().into())
-                .unwrap();
+                .unwrap_or(U128::from(0));
             self.storage_deposits.insert(
                 &account_id.clone().into(),
                 &U128::from(deposit.0.saturating_add(balance.0)),
@@ -189,7 +189,7 @@ impl Launchpad {
             self.storage_deposits.contains_key(&account.clone().into()),
             "No account found"
         );
-        let balance = self.storage_deposits.get(&account.clone().into()).unwrap();
+        let balance = self.storage_deposits.get(&account.clone().into()).unwrap_or(U128::from(0));
         require!(balance > U128::from(0), "Empty balance");
         self.storage_deposits.remove(&account.clone().into());
         log!(
@@ -199,6 +199,15 @@ impl Launchpad {
         );
 
         Promise::new(account).transfer(balance.0)
+    }
+
+    pub fn get_storage_balance_of(self, account: AccountId) -> U128 {
+        require!(
+            self.storage_deposits.contains_key(&account.clone().into()),
+            "No account found"
+        );
+
+        self.storage_deposits.get(&account.clone().into()).unwrap_or(U128::from(0))
     }
 
     /*
@@ -229,11 +238,7 @@ impl Launchpad {
     pub fn mint_result(&mut self) {
         //require!(env::promise_result() == 1);
         require!(env::promise_results_count() == 1);
-
-        let balance = env::attached_deposit();
-
-        log!("GOOD refunded amount: {:?}", balance);
-        self.nft_pack_supply = self.nft_pack_supply.wrapping_sub(1);
+        self.nft_pack_supply = self.nft_pack_supply.saturating_sub(1);
     }
 }
 /*
@@ -300,6 +305,7 @@ impl FungibleTokenReceiver for Launchpad {
             match message {
                 TokenReceiverMessage::Mint { mint_amount } => {
                     require!(mint_amount > 0);
+                    require!(u64::from(self.nft_pack_supply) >= mint_amount, format!("Supply limit reached. Left {} NFT pack", self.nft_pack_supply));
                     let storage_deposit = self.storage_deposits.get(&sender_id.clone());
                     require!(
                         storage_deposit.is_some(),
