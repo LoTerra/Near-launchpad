@@ -1,7 +1,7 @@
 use near_contract_standards::non_fungible_token::metadata::TokenMetadata;
 use near_sdk::json_types::U128;
 use near_sdk::serde_json::json;
-use near_sdk::{env, AccountId, Gas, require};
+use near_sdk::{env, require, AccountId, Gas};
 
 const MINT_STORAGE_COST: u128 = 5870000000000000000000;
 const DEFAULT_GAS: u64 = 5_000_000_000_000;
@@ -12,10 +12,16 @@ pub(crate) fn promise_mint_pack(
     token_metadata: TokenMetadata,
     mint_limit: u64,
     current_account: AccountId,
-    storage_deposit: U128
+    storage_deposit: U128,
 ) -> u128 {
     let storage_mint = u128::from(mint_limit) * MINT_STORAGE_COST;
-    require!(storage_deposit.0 >= storage_mint, format!("Required minimum storage deposit of {} Yocto Near", storage_mint));
+    require!(
+        storage_deposit.0 >= storage_mint,
+        format!(
+            "Required minimum storage deposit of {} Yocto Near",
+            storage_mint
+        )
+    );
 
     let promise_id = env::promise_batch_create(&nft_pack_contract);
     let mut n = 0;
@@ -30,7 +36,7 @@ pub(crate) fn promise_mint_pack(
             })
             .to_string()
             .as_bytes(),
-            U128::from(MINT_STORAGE_COST).0,
+            storage_mint,
             Gas::from(DEFAULT_GAS),
         );
         n += 1;

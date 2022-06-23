@@ -8,8 +8,8 @@ use near_sdk::json_types::U128;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::serde_json::json;
 use near_sdk::{
-    assert_one_yocto, env, log, near_bindgen, require, serde_json, AccountId, Gas,
-    PanicOnDefault, Promise, PromiseOrValue, Timestamp,
+    assert_one_yocto, env, log, near_bindgen, require, serde_json, AccountId, Gas, PanicOnDefault,
+    Promise, PromiseOrValue, Timestamp,
 };
 
 const CODE: &[u8] =
@@ -52,7 +52,7 @@ pub struct WhitelistState {
 #[serde(untagged)]
 enum TokenReceiverMessage {
     /// Reserve an NFT.
-    Reserve { nft_amount: u64 },
+    Mint { mint_amount: u64 },
 }
 const MINT_STORAGE_COST: u128 = 5870000000000000000000;
 
@@ -163,8 +163,14 @@ impl Launchpad {
         let account_id = account.unwrap_or(env::signer_account_id());
         let deposit = U128::from(env::attached_deposit());
 
-        if self.storage_deposits.contains_key(&account_id.clone().into()) {
-            let balance = self.storage_deposits.get(&account_id.clone().into()).unwrap();
+        if self
+            .storage_deposits
+            .contains_key(&account_id.clone().into())
+        {
+            let balance = self
+                .storage_deposits
+                .get(&account_id.clone().into())
+                .unwrap();
             self.storage_deposits.insert(
                 &account_id.clone().into(),
                 &U128::from(deposit.0.saturating_add(balance.0)),
@@ -292,9 +298,13 @@ impl FungibleTokenReceiver for Launchpad {
                 .expect("Illegal msg in ft_transfer_call");
             // Mint info end
             match message {
-                TokenReceiverMessage::Reserve { nft_amount } => {
+                TokenReceiverMessage::Mint { mint_amount } => {
+                    require!(mint_amount > 0);
                     let storage_deposit = self.storage_deposits.get(&sender_id.clone());
-                    require!(storage_deposit.is_some(), "Action required deposit Near for storage");
+                    require!(
+                        storage_deposit.is_some(),
+                        "Action required deposit Near for storage"
+                    );
 
                     match env::block_timestamp() {
                         time if time > self.public_sale_start => {
@@ -302,8 +312,10 @@ impl FungibleTokenReceiver for Launchpad {
                             if self.minted.contains_key(&sender_id.clone().into()) {
                                 let amount_minted =
                                     self.minted.get(&sender_id.clone().into()).unwrap();
-                                self.minted
-                                    .insert(&sender_id.clone().into(), &amount_minted.saturating_add(1));
+                                self.minted.insert(
+                                    &sender_id.clone().into(),
+                                    &amount_minted.saturating_add(1),
+                                );
                             } else {
                                 self.minted.insert(&sender_id.clone().into(), &1);
                             }
@@ -314,14 +326,19 @@ impl FungibleTokenReceiver for Launchpad {
                                 token_id,
                                 receiver_id,
                                 token_metadata,
-                                nft_amount,
+                                mint_amount,
                                 env::current_account_id(),
-                                storage_deposit.unwrap_or(U128::from(0))
+                                storage_deposit.unwrap_or(U128::from(0)),
                             );
 
                             self.storage_deposits.insert(
                                 &sender_id.clone().into(),
-                                &U128::from(storage_deposit.unwrap_or(U128::from(0)).0.saturating_sub(used_storage_deposit)),
+                                &U128::from(
+                                    storage_deposit
+                                        .unwrap_or(U128::from(0))
+                                        .0
+                                        .saturating_sub(used_storage_deposit),
+                                ),
                             );
                             // let promise0 = env::promise_create(
                             //     self.nft_pack_contract.clone(),
@@ -367,8 +384,10 @@ impl FungibleTokenReceiver for Launchpad {
                                     u64::from(whitelist_user.minting_limit) < amount_minted,
                                     "Minting limit reached"
                                 );
-                                self.minted
-                                    .insert(&sender_id.clone().into(), &amount_minted.saturating_add(1));
+                                self.minted.insert(
+                                    &sender_id.clone().into(),
+                                    &amount_minted.saturating_add(1),
+                                );
                             } else {
                                 self.minted.insert(&sender_id.clone().into(), &1);
                             }
@@ -378,13 +397,18 @@ impl FungibleTokenReceiver for Launchpad {
                                 token_id,
                                 receiver_id,
                                 token_metadata,
-                                nft_amount,
+                                mint_amount,
                                 env::current_account_id(),
-                                storage_deposit.unwrap_or(U128::from(0))
+                                storage_deposit.unwrap_or(U128::from(0)),
                             );
                             self.storage_deposits.insert(
                                 &sender_id.clone().into(),
-                                &U128::from(storage_deposit.unwrap_or(U128::from(0)).0.saturating_sub(used_storage_deposit)),
+                                &U128::from(
+                                    storage_deposit
+                                        .unwrap_or(U128::from(0))
+                                        .0
+                                        .saturating_sub(used_storage_deposit),
+                                ),
                             );
 
                             // let promise0 = env::promise_create(
