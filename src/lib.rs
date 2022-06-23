@@ -176,7 +176,10 @@ impl Launchpad {
                 &U128::from(deposit.0.checked_add(balance.0).unwrap()),
             );
 
-            log!("Balance {}YoctoNear", deposit.0.checked_add(balance.0).unwrap());
+            log!(
+                "Balance {}YoctoNear",
+                deposit.0.checked_add(balance.0).unwrap()
+            );
         } else {
             self.storage_deposits.insert(&account_id.into(), &deposit);
         }
@@ -189,7 +192,10 @@ impl Launchpad {
             self.storage_deposits.contains_key(&account.clone().into()),
             "No account found"
         );
-        let balance = self.storage_deposits.get(&account.clone().into()).unwrap_or(U128::from(0));
+        let balance = self
+            .storage_deposits
+            .get(&account.clone().into())
+            .unwrap_or(U128::from(0));
         require!(balance > U128::from(0), "Empty balance");
         self.storage_deposits.remove(&account.clone().into());
         log!(
@@ -207,7 +213,9 @@ impl Launchpad {
             "No account found"
         );
 
-        self.storage_deposits.get(&account.clone().into()).unwrap_or(U128::from(0))
+        self.storage_deposits
+            .get(&account.clone().into())
+            .unwrap_or(U128::from(0))
     }
 
     /*
@@ -302,11 +310,17 @@ impl FungibleTokenReceiver for Launchpad {
                         amount == U128::from(self.minting_price.0 * u128::from(mint_amount)),
                         format!(
                             "Wrong amount sent, minting price {:?} DAI/USDC/USDT",
-                           self.minting_price.0 * u128::from(mint_amount)
+                            self.minting_price.0 * u128::from(mint_amount)
                         )
                     );
 
-                    require!(self.nft_pack_supply >= mint_amount, format!("Supply limit reached. Left {} NFT pack", self.nft_pack_supply));
+                    require!(
+                        self.nft_pack_supply >= mint_amount,
+                        format!(
+                            "Supply limit reached. Left {} NFT pack",
+                            self.nft_pack_supply
+                        )
+                    );
                     let storage_deposit = self.storage_deposits.get(&sender_id.clone());
                     require!(
                         storage_deposit.is_some(),
@@ -344,7 +358,8 @@ impl FungibleTokenReceiver for Launchpad {
                                     storage_deposit
                                         .unwrap_or(U128::from(0))
                                         .0
-                                        .checked_sub(used_storage_deposit).unwrap(),
+                                        .checked_sub(used_storage_deposit)
+                                        .unwrap(),
                                 ),
                             );
                             // let promise0 = env::promise_create(
@@ -414,7 +429,8 @@ impl FungibleTokenReceiver for Launchpad {
                                     storage_deposit
                                         .unwrap_or(U128::from(0))
                                         .0
-                                        .checked_sub(used_storage_deposit).unwrap(),
+                                        .checked_sub(used_storage_deposit)
+                                        .unwrap(),
                                 ),
                             );
 

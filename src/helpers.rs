@@ -1,3 +1,4 @@
+use crate::serde_json::Value;
 use near_contract_standards::non_fungible_token::metadata::TokenMetadata;
 use near_sdk::json_types::U128;
 use near_sdk::serde_json::json;
@@ -24,38 +25,25 @@ pub(crate) fn promise_mint_pack(
     );
 
     let promise_id = env::promise_batch_create(&nft_pack_contract);
+    let mut arguments = json!({
+        "token_id": token_id,
+        "receiver_id": receiver_id,
+        "token_metadata": token_metadata
+    });
+
     let mut n = 0;
     while n < mint_limit {
         if mint_limit - n == 1 {
-            env::promise_batch_action_function_call(
-                promise_id,
-                "nft_mint",
-                json!({
-                "token_id": token_id,
-                "receiver_id": receiver_id.clone(),
-                "token_metadata": token_metadata,
-                    "refund_id": Some(receiver_id.clone())
-            })
-                    .to_string()
-                    .as_bytes(),
-                storage_mint,
-                Gas::from(DEFAULT_GAS),
-            );
-        }else {
-            env::promise_batch_action_function_call(
-                promise_id,
-                "nft_mint",
-                json!({
-                "token_id": token_id,
-                "receiver_id": receiver_id,
-                "token_metadata": token_metadata
-            })
-                    .to_string()
-                    .as_bytes(),
-                storage_mint,
-                Gas::from(DEFAULT_GAS),
-            );
+            arguments["refund_id"] = Value::String(receiver_id.clone().to_string());
         }
+
+        env::promise_batch_action_function_call(
+            promise_id,
+            "nft_mint",
+            arguments.to_string().as_bytes(),
+            storage_mint,
+            Gas::from(DEFAULT_GAS),
+        );
 
         n += 1;
     }
