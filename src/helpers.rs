@@ -26,19 +26,37 @@ pub(crate) fn promise_mint_pack(
     let promise_id = env::promise_batch_create(&nft_pack_contract);
     let mut n = 0;
     while n < mint_limit {
-        env::promise_batch_action_function_call(
-            promise_id,
-            "nft_mint",
-            json!({
+        if mint_limit - n == 1 {
+            env::promise_batch_action_function_call(
+                promise_id,
+                "nft_mint",
+                json!({
+                "token_id": token_id,
+                "receiver_id": receiver_id.clone(),
+                "token_metadata": token_metadata,
+                    "refund_id": Some(receiver_id.clone())
+            })
+                    .to_string()
+                    .as_bytes(),
+                storage_mint,
+                Gas::from(DEFAULT_GAS),
+            );
+        }else {
+            env::promise_batch_action_function_call(
+                promise_id,
+                "nft_mint",
+                json!({
                 "token_id": token_id,
                 "receiver_id": receiver_id,
                 "token_metadata": token_metadata
             })
-            .to_string()
-            .as_bytes(),
-            storage_mint,
-            Gas::from(DEFAULT_GAS),
-        );
+                    .to_string()
+                    .as_bytes(),
+                storage_mint,
+                Gas::from(DEFAULT_GAS),
+            );
+        }
+
         n += 1;
     }
 

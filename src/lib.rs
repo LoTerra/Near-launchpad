@@ -173,10 +173,10 @@ impl Launchpad {
                 .unwrap_or(U128::from(0));
             self.storage_deposits.insert(
                 &account_id.clone().into(),
-                &U128::from(deposit.0.saturating_add(balance.0)),
+                &U128::from(deposit.0.checked_add(balance.0).unwrap()),
             );
 
-            log!("Balance {}YoctoNear", deposit.0.saturating_add(balance.0));
+            log!("Balance {}YoctoNear", deposit.0.checked_add(balance.0).unwrap());
         } else {
             self.storage_deposits.insert(&account_id.into(), &deposit);
         }
@@ -238,7 +238,7 @@ impl Launchpad {
     pub fn mint_result(&mut self) {
         //require!(env::promise_result() == 1);
         require!(env::promise_results_count() == 1);
-        self.nft_pack_supply = self.nft_pack_supply.saturating_sub(1);
+        self.nft_pack_supply = self.nft_pack_supply.checked_sub(1).unwrap();
     }
 }
 /*
@@ -258,18 +258,7 @@ impl FungibleTokenReceiver for Launchpad {
                 || self.usdt_account_id == env::predecessor_account_id(),
             "Only allowed NF contracts can call this message"
         );
-        /*
-           TODO: USDC & USDT are 6 decimals but DAI are 18 decimals. We need to do extra checks
-        */
 
-        // Verify the amount sent match with minting cost
-        require!(
-            amount == self.minting_price,
-            format!(
-                "Wrong amount sent, minting price {:?} DAI/USDC/USDT",
-                self.minting_price
-            )
-        );
         log!(
             "in {} tokens from @{} ft_on_transfer, msg = {}",
             amount.0,
@@ -305,6 +294,18 @@ impl FungibleTokenReceiver for Launchpad {
             match message {
                 TokenReceiverMessage::Mint { mint_amount } => {
                     require!(mint_amount > 0);
+                    /*
+                       TODO: USDC & USDT are 6 decimals but DAI are 18 decimals. We need to do extra checks
+                    */
+                    // Verify the amount sent match with minting cost
+                    require!(
+                        amount == U128::from(self.minting_price.0 * u128::from(mint_amount)),
+                        format!(
+                            "Wrong amount sent, minting price {:?} DAI/USDC/USDT",
+                           self.minting_price.0 * u128::from(mint_amount)
+                        )
+                    );
+
                     require!(self.nft_pack_supply >= mint_amount, format!("Supply limit reached. Left {} NFT pack", self.nft_pack_supply));
                     let storage_deposit = self.storage_deposits.get(&sender_id.clone());
                     require!(
@@ -320,7 +321,7 @@ impl FungibleTokenReceiver for Launchpad {
                                     self.minted.get(&sender_id.clone().into()).unwrap();
                                 self.minted.insert(
                                     &sender_id.clone().into(),
-                                    &amount_minted.saturating_add(1),
+                                    &amount_minted.checked_add(1).unwrap(),
                                 );
                             } else {
                                 self.minted.insert(&sender_id.clone().into(), &1);
@@ -343,7 +344,7 @@ impl FungibleTokenReceiver for Launchpad {
                                     storage_deposit
                                         .unwrap_or(U128::from(0))
                                         .0
-                                        .saturating_sub(used_storage_deposit),
+                                        .checked_sub(used_storage_deposit).unwrap(),
                                 ),
                             );
                             // let promise0 = env::promise_create(
@@ -392,7 +393,7 @@ impl FungibleTokenReceiver for Launchpad {
                                 );
                                 self.minted.insert(
                                     &sender_id.clone().into(),
-                                    &amount_minted.saturating_add(1),
+                                    &amount_minted.checked_add(1).unwrap(),
                                 );
                             } else {
                                 self.minted.insert(&sender_id.clone().into(), &1);
@@ -413,7 +414,7 @@ impl FungibleTokenReceiver for Launchpad {
                                     storage_deposit
                                         .unwrap_or(U128::from(0))
                                         .0
-                                        .saturating_sub(used_storage_deposit),
+                                        .checked_sub(used_storage_deposit).unwrap(),
                                 ),
                             );
 
@@ -583,7 +584,7 @@ mod tests {
         let mut contract = default_launchpad_init("admin_near".to_string());
         contract.add_whitelist(
             "alice_near".to_string(),
-            env::block_timestamp().saturating_add(100),
+            env::block_timestamp().checked_add(100).unwrap(),
             U128::from(1000),
             5,
         );
@@ -598,7 +599,7 @@ mod tests {
         let mut contract = default_launchpad_init("admin_near".to_string());
         contract.add_whitelist(
             "alice_near".to_string(),
-            env::block_timestamp().saturating_add(100),
+            env::block_timestamp().checked_add(100).unwrap(),
             U128::from(10),
             5,
         );
