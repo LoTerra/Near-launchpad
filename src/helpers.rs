@@ -10,7 +10,7 @@ pub(crate) fn promise_mint_pack(
     token_id: String,
     receiver_id: AccountId,
     token_metadata: TokenMetadata,
-    mint_limit: u64,
+    mint_limit: u16,
     current_account: AccountId,
     storage_deposit: U128,
 ) -> u128 {

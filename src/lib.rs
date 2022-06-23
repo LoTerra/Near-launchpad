@@ -52,7 +52,7 @@ pub struct WhitelistState {
 #[serde(untagged)]
 enum TokenReceiverMessage {
     /// Reserve an NFT.
-    Mint { mint_amount: u64 },
+    Mint { mint_amount: u16 },
 }
 const MINT_STORAGE_COST: u128 = 5870000000000000000000;
 
@@ -305,7 +305,7 @@ impl FungibleTokenReceiver for Launchpad {
             match message {
                 TokenReceiverMessage::Mint { mint_amount } => {
                     require!(mint_amount > 0);
-                    require!(u64::from(self.nft_pack_supply) >= mint_amount, format!("Supply limit reached. Left {} NFT pack", self.nft_pack_supply));
+                    require!(self.nft_pack_supply >= mint_amount, format!("Supply limit reached. Left {} NFT pack", self.nft_pack_supply));
                     let storage_deposit = self.storage_deposits.get(&sender_id.clone());
                     require!(
                         storage_deposit.is_some(),
