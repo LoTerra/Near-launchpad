@@ -8,7 +8,7 @@ const MINT_STORAGE_COST: u128 = 5870000000000000000000;
 const DEFAULT_GAS: u64 = 5_000_000_000_000;
 pub(crate) fn promise_mint_pack(
     nft_pack_contract: AccountId,
-    token_id: String,
+    nft_pack_supply: u16,
     receiver_id: AccountId,
     token_metadata: TokenMetadata,
     mint_limit: u16,
@@ -25,14 +25,19 @@ pub(crate) fn promise_mint_pack(
     );
 
     let promise_id = env::promise_batch_create(&nft_pack_contract);
-    let mut arguments = json!({
-        "token_id": token_id,
-        "receiver_id": receiver_id,
-        "token_metadata": token_metadata
-    });
 
     let mut n = 0;
     while n < mint_limit {
+        let token_id = nft_pack_supply
+            .checked_sub(n.checked_add(1).unwrap())
+            .unwrap()
+            .to_string();
+        let mut arguments = json!({
+            "token_id": token_id,
+            "receiver_id": receiver_id,
+            "token_metadata": token_metadata
+        });
+
         if mint_limit - n == 1 {
             arguments["refund_id"] = Value::String(receiver_id.clone().to_string());
         }
@@ -54,10 +59,12 @@ pub(crate) fn promise_mint_pack(
     );
 
     env::promise_batch_action_function_call(
-        callback_promise_id,    // associate the function call with callback_promise_id
-        "mint_result",          // the function call will be a callback function
-        &[],                    // method arguments
-        0,                      // amount of yoctoNEAR to attach
+        callback_promise_id, // associate the function call with callback_promise_id
+        "mint_result",       // the function call will be a callback function
+        &json!({ "reduce_amount": mint_limit })
+            .to_string()
+            .as_bytes(), // method arguments
+        0,                   // amount of yoctoNEAR to attach
         Gas::from(DEFAULT_GAS), // gas to attach
     );
 

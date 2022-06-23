@@ -33,7 +33,7 @@ pub struct Launchpad {
     minted: LookupMap<AccountId, u64>,
     storage_deposits: LookupMap<AccountId, U128>,
     nft_pack_contract: AccountId,
-    // TODO: available mint and decrease on every mint
+    // available mint and decrease on every mint
     nft_pack_supply: u16,
 }
 
@@ -78,7 +78,7 @@ impl Launchpad {
             dev help https://www.near-sdk.io/promises/deploy-contract
         */
         let subaccount_id =
-            AccountId::new_unchecked(format!("nft_pack8.{}", env::current_account_id()));
+            AccountId::new_unchecked(format!("nft_pack9.{}", env::current_account_id()));
         let current_accout = env::current_account_id();
 
         let metadata = NFTContractMetadata {
@@ -206,7 +206,9 @@ impl Launchpad {
 
         Promise::new(account).transfer(balance.0)
     }
-
+    /*
+        Allow users to check their deposited amount
+    */
     pub fn get_storage_balance_of(self, account: AccountId) -> U128 {
         require!(
             self.storage_deposits.contains_key(&account.clone().into()),
@@ -226,10 +228,6 @@ impl Launchpad {
        TODO: Allow admin to withdraw collected funds out of the launchpad contract
     */
 
-    /*
-       TODO: Allow users to check their deposited amount
-    */
-
     pub fn get_whitelist(&self, from_index: u64, limit: u64) -> Vec<(AccountId, WhitelistState)> {
         let keys = self.whitelist.keys_as_vector();
         let values = self.whitelist.values_as_vector();
@@ -243,15 +241,13 @@ impl Launchpad {
     */
 
     #[private]
-    pub fn mint_result(&mut self) {
+    pub fn mint_result(&mut self, reduce_amount: u16) {
         //require!(env::promise_result() == 1);
         require!(env::promise_results_count() == 1);
-        self.nft_pack_supply = self.nft_pack_supply.checked_sub(1).unwrap();
+        self.nft_pack_supply = self.nft_pack_supply.checked_sub(reduce_amount).unwrap();
     }
 }
-/*
-   TODO: Allows multiple mint at same time with a loop
-*/
+
 #[near_bindgen]
 impl FungibleTokenReceiver for Launchpad {
     fn ft_on_transfer(
@@ -261,8 +257,9 @@ impl FungibleTokenReceiver for Launchpad {
         msg: String,
     ) -> PromiseOrValue<U128> {
         require!(
-            self.dai_account_id == env::predecessor_account_id()
-                || self.usdc_account_id == env::predecessor_account_id()
+            // self.dai_account_id == env::predecessor_account_id()
+            //     ||
+            self.usdc_account_id == env::predecessor_account_id()
                 || self.usdt_account_id == env::predecessor_account_id(),
             "Only allowed NF contracts can call this message"
         );
@@ -289,7 +286,7 @@ impl FungibleTokenReceiver for Launchpad {
             reference: None,
             reference_hash: None,
         };
-        let token_id = self.nft_pack_supply.to_string();
+
         let receiver_id = sender_id.clone();
 
         if msg.is_empty() {
@@ -344,7 +341,7 @@ impl FungibleTokenReceiver for Launchpad {
                             // TODO: Mint the NFT pack and send it to the sender
                             let used_storage_deposit = promise_mint_pack(
                                 self.nft_pack_contract.clone(),
-                                token_id,
+                                self.nft_pack_supply,
                                 receiver_id,
                                 token_metadata,
                                 mint_amount,
@@ -416,7 +413,7 @@ impl FungibleTokenReceiver for Launchpad {
                             // TODO: Mint the NFT pack and send it to the sender
                             let used_storage_deposit = promise_mint_pack(
                                 self.nft_pack_contract.clone(),
-                                token_id,
+                                self.nft_pack_supply,
                                 receiver_id,
                                 token_metadata,
                                 mint_amount,
