@@ -1,4 +1,5 @@
 mod helpers;
+
 use crate::helpers::promise_mint_pack;
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_contract_standards::non_fungible_token::metadata::{NFTContractMetadata, TokenMetadata};
@@ -9,12 +10,14 @@ use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::serde_json::json;
 use near_sdk::{
     assert_one_yocto, env, log, near_bindgen, require, serde_json, AccountId, Gas, PanicOnDefault,
-    Promise, PromiseOrValue, Timestamp,
+    Promise, PromiseOrValue, PromiseResult, Timestamp,
 };
 
 const CODE: &[u8] =
     include_bytes!("../../NFT/target/wasm32-unknown-unknown/release/non_fungible_token.wasm");
 const DEFAULT_GAS: u64 = 5_000_000_000_000;
+const MINT_STORAGE_COST: u128 = 5870000000000000000000;
+const MIN_DEPOSIT_CREATING_ACCOUNT: u128 = 50_000_000_000_000_000_000_000_000;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -25,7 +28,7 @@ pub struct Launchpad {
     admin: AccountId,
     usdc_account_id: AccountId,
     usdt_account_id: AccountId,
-    dai_account_id: AccountId,
+    // dai_account_id: AccountId,
     private_sale_start: u64,
     public_sale_start: u64,
     switch_off: bool,
@@ -51,19 +54,19 @@ pub struct WhitelistState {
 #[serde(crate = "near_sdk::serde")]
 #[serde(untagged)]
 enum TokenReceiverMessage {
-    /// Reserve an NFT.
+    /// Mint an NFT, amount will be used to verify the deposit.
     Mint { mint_amount: u16 },
 }
-const MINT_STORAGE_COST: u128 = 5870000000000000000000;
 
 #[near_bindgen]
 impl Launchpad {
+    /// Instantiate the contract
     #[init]
     pub fn new(
         minting_price: U128,
         usdc_account_id: AccountId,
         usdt_account_id: AccountId,
-        dai_account_id: AccountId,
+        //dai_account_id: AccountId,
         private_sale_start: u64,
         public_sale_start: u64,
         nft_pack_supply: u16,
@@ -93,7 +96,7 @@ impl Launchpad {
 
         Promise::new(subaccount_id.clone())
             .create_account()
-            .transfer(50_000_000_000_000_000_000_000_000)
+            .transfer(MIN_DEPOSIT_CREATING_ACCOUNT)
             .add_full_access_key(env::signer_account_pk())
             .deploy_contract(CODE.to_vec())
             .function_call(
@@ -115,9 +118,10 @@ impl Launchpad {
             admin: env::signer_account_id(),
             usdc_account_id,
             usdt_account_id,
-            dai_account_id,
+            // dai_account_id,
             private_sale_start,
             public_sale_start,
+            // Not used should we use a switch off??
             switch_off: false,
             minted: LookupMap::new(b"m"),
             storage_deposits: LookupMap::new(b"d"),
@@ -125,7 +129,7 @@ impl Launchpad {
             nft_pack_supply,
         }
     }
-
+    /// Admin add account id to whitelist
     pub fn add_whitelist(
         &mut self,
         address: String,
@@ -152,7 +156,7 @@ impl Launchpad {
 
         log!(format!("Whitelist user {}", address));
     }
-
+    /// Near deposit storage, used as fee for minting NFT
     #[payable]
     pub fn storage_deposit(&mut self, account: Option<AccountId>) {
         require!(
@@ -184,6 +188,7 @@ impl Launchpad {
             self.storage_deposits.insert(&account_id.into(), &deposit);
         }
     }
+    /// Withdraw all storage deposited
     #[payable]
     pub fn storage_withdraw_all(&mut self) -> Promise {
         assert_one_yocto();
@@ -207,8 +212,16 @@ impl Launchpad {
         Promise::new(account).transfer(balance.0)
     }
     /*
-        Allow users to check their deposited amount
+       TODO: Add delete from whitelist only admin allowed
     */
+
+    /*
+       TODO: Allow admin to withdraw collected funds out of the launchpad contract
+    */
+
+    /// Queries
+    /// Get storage balance from account id
+    // Allow users to check their deposited amount
     pub fn get_storage_balance_of(self, account: AccountId) -> U128 {
         require!(
             self.storage_deposits.contains_key(&account.clone().into()),
@@ -220,14 +233,7 @@ impl Launchpad {
             .unwrap_or(U128::from(0))
     }
 
-    /*
-       TODO: Add update whitelist only admin allowed
-    */
-
-    /*
-       TODO: Allow admin to withdraw collected funds out of the launchpad contract
-    */
-
+    /// Query get whitelist by pagination from index + limit
     pub fn get_whitelist(&self, from_index: u64, limit: u64) -> Vec<(AccountId, WhitelistState)> {
         let keys = self.whitelist.keys_as_vector();
         let values = self.whitelist.values_as_vector();
@@ -236,15 +242,53 @@ impl Launchpad {
             .collect()
     }
 
-    /*
-       TODO: Query get minting info
-    */
+    /// Get minting info from account id
+    pub fn get_minting_of(self, account: AccountId) -> u64 {
+        require!(
+            self.minted.contains_key(&account.clone().into()),
+            "No account found"
+        );
+
+        self.minted.get(&account.clone().into()).unwrap_or_default()
+    }
 
     #[private]
-    pub fn mint_result(&mut self, reduce_amount: u16) {
-        //require!(env::promise_result() == 1);
+    pub fn mint_result(
+        &mut self,
+        reduce_from_supply: u16,
+        _receiver_id: AccountId,
+        _from: AccountId,
+        _refund_amount: U128,
+    ) {
         require!(env::promise_results_count() == 1);
-        self.nft_pack_supply = self.nft_pack_supply.checked_sub(reduce_amount).unwrap();
+        match env::promise_result(0) {
+            PromiseResult::NotReady => unreachable!(),
+            PromiseResult::Successful(_) => {
+                log!(format!("Successfully minted {} pack", reduce_from_supply));
+                self.nft_pack_supply = self
+                    .nft_pack_supply
+                    .checked_sub(reduce_from_supply)
+                    .unwrap();
+            }
+            PromiseResult::Failed => {
+                // log!("Refund because failed to mint NFT pack");
+                // // Probably we need to refund the user here
+                // Promise::new(from).function_call(
+                //     "ft_transfer_call".to_string(),
+                //     json!({
+                //         "receiver_id": receiver_id,
+                //         "amount": refund_amount
+                //     })
+                //     .to_string()
+                //     .as_bytes()
+                //     .to_vec(),
+                //     0,
+                //     Gas::from(DEFAULT_GAS),
+                // );
+                // OR panic
+                env::panic_str("Minting failed")
+            }
+        }
     }
 }
 
@@ -300,7 +344,7 @@ impl FungibleTokenReceiver for Launchpad {
                 TokenReceiverMessage::Mint { mint_amount } => {
                     require!(mint_amount > 0);
                     /*
-                       TODO: USDC & USDT are 6 decimals but DAI are 18 decimals. We need to do extra checks
+                       INFO: USDC & USDT are 6 decimals but DAI are 18 decimals.
                     */
                     // Verify the amount sent match with minting cost
                     require!(
@@ -338,7 +382,7 @@ impl FungibleTokenReceiver for Launchpad {
                                 self.minted.insert(&sender_id.clone().into(), &1);
                             }
 
-                            // TODO: Mint the NFT pack and send it to the sender
+                            // Mint the NFT pack and send it to the sender
                             let used_storage_deposit = promise_mint_pack(
                                 self.nft_pack_contract.clone(),
                                 self.nft_pack_supply,
@@ -347,6 +391,7 @@ impl FungibleTokenReceiver for Launchpad {
                                 mint_amount,
                                 env::current_account_id(),
                                 storage_deposit.unwrap_or(U128::from(0)),
+                                amount,
                             );
 
                             self.storage_deposits.insert(
@@ -359,30 +404,6 @@ impl FungibleTokenReceiver for Launchpad {
                                         .unwrap(),
                                 ),
                             );
-                            // let promise0 = env::promise_create(
-                            //     self.nft_pack_contract.clone(),
-                            //     "nft_mint",
-                            //     json!({
-                            //         "token_id": token_id,
-                            //         "receiver_id": receiver_id,
-                            //         "token_metadata": token_metadata,
-                            //         "refund_id": receiver_id
-                            //     })
-                            //     .to_string()
-                            //     .as_bytes(),
-                            //     U128::from(9870000000000000000000).0,
-                            //     Gas::from(DEFAULT_GAS),
-                            // );
-                            //
-                            // let promise1 = env::promise_then(
-                            //     promise0,
-                            //     env::current_account_id(),
-                            //     "mint_result",
-                            //     &[],
-                            //     0,
-                            //     Gas::from(DEFAULT_GAS),
-                            // );
-                            // env::promise_return(promise1);
 
                             PromiseOrValue::Value(U128::from(0))
                         }
@@ -410,7 +431,7 @@ impl FungibleTokenReceiver for Launchpad {
                             } else {
                                 self.minted.insert(&sender_id.clone().into(), &1);
                             }
-                            // TODO: Mint the NFT pack and send it to the sender
+                            // Mint the NFT pack and send it to the sender
                             let used_storage_deposit = promise_mint_pack(
                                 self.nft_pack_contract.clone(),
                                 self.nft_pack_supply,
@@ -419,6 +440,7 @@ impl FungibleTokenReceiver for Launchpad {
                                 mint_amount,
                                 env::current_account_id(),
                                 storage_deposit.unwrap_or(U128::from(0)),
+                                amount,
                             );
                             self.storage_deposits.insert(
                                 &sender_id.clone().into(),
@@ -431,28 +453,6 @@ impl FungibleTokenReceiver for Launchpad {
                                 ),
                             );
 
-                            // let promise0 = env::promise_create(
-                            //     self.nft_pack_contract.clone(),
-                            //     "nft_mint",
-                            //     json!({
-                            //         "token_id": token_id,
-                            //         "receiver_id": receiver_id,
-                            //         "token_metadata": token_metadata
-                            //     })
-                            //     .to_string()
-                            //     .as_bytes(),
-                            //     0,
-                            //     Gas::from(DEFAULT_GAS),
-                            // );
-                            // let promise1 = env::promise_then(
-                            //     promise0,
-                            //     env::current_account_id(),
-                            //     "mint_result",
-                            //     &[],
-                            //     0,
-                            //     Gas::from(DEFAULT_GAS),
-                            // );
-                            // env::promise_return(promise1);
                             PromiseOrValue::Value(U128::from(0))
                         }
                         _ => {
@@ -463,102 +463,6 @@ impl FungibleTokenReceiver for Launchpad {
                 }
             }
         }
-        // match msg.as_str() {
-        //     "reserve_mint" => {
-        //         // Verify if minting time have started otherwise refund
-        //         match env::block_timestamp() {
-        //             time if time > self.public_sale_start => {
-        //                 // Save the Sender to minted storage and increment the amount already minted
-        //                 if self.minted.contains_key(&sender_id.clone().into()) {
-        //                     let amount_minted = self.minted.get(&sender_id.clone().into()).unwrap();
-        //                     self.minted
-        //                         .insert(&sender_id.into(), &amount_minted.saturating_add(1));
-        //                 } else {
-        //                     self.minted.insert(&sender_id.into(), &1);
-        //                 }
-        //                 // TODO: Mint the NFT pack and send it to the sender
-        //                 let promise0 = env::promise_create(
-        //                     self.nft_pack_contract.clone(),
-        //                     "nft_mint",
-        //                     json!({
-        //                         "token_id": token_id,
-        //                         "receiver_id": receiver_id,
-        //                         "token_metadata": token_metadata
-        //                     })
-        //                     .to_string()
-        //                     .as_bytes(),
-        //                     0,
-        //                     Gas::from(DEFAULT_GAS),
-        //                 );
-        //                 let promise1 = env::promise_then(
-        //                     promise0,
-        //                     env::current_account_id(),
-        //                     "mint_result",
-        //                     &[],
-        //                     0,
-        //                     Gas::from(DEFAULT_GAS),
-        //                 );
-        //                 env::promise_return(promise1);
-        //
-        //                 PromiseOrValue::Value(U128::from(0))
-        //             }
-        //             time if time > self.private_sale_start => {
-        //                 // Verify the sender is in the whitelist
-        //                 require!(
-        //                     self.whitelist.get(&sender_id).is_some(),
-        //                     "The address is not in the whitelist"
-        //                 );
-        //                 // Verify the sender have not reached the minting limit
-        //                 // Save the Sender to minted storage and increment the amount already minted
-        //                 let whitelist_user = self.whitelist.get(&sender_id).unwrap();
-        //                 require!(!whitelist_user.restricted, "Address have been restricted");
-        //                 if self.minted.contains_key(&sender_id.clone().into()) {
-        //                     let amount_minted = self.minted.get(&sender_id.clone().into()).unwrap();
-        //                     require!(
-        //                         u64::from(whitelist_user.minting_limit) < amount_minted,
-        //                         "Minting limit reached"
-        //                     );
-        //                     self.minted
-        //                         .insert(&sender_id.into(), &amount_minted.saturating_add(1));
-        //                 } else {
-        //                     self.minted.insert(&sender_id.into(), &1);
-        //                 }
-        //                 // TODO: Mint the NFT pack and send it to the sender
-        //                 let promise0 = env::promise_create(
-        //                     self.nft_pack_contract.clone(),
-        //                     "nft_mint",
-        //                     json!({
-        //                         "token_id": token_id,
-        //                         "receiver_id": receiver_id,
-        //                         "token_metadata": token_metadata
-        //                     })
-        //                     .to_string()
-        //                     .as_bytes(),
-        //                     0,
-        //                     Gas::from(DEFAULT_GAS),
-        //                 );
-        //                 let promise1 = env::promise_then(
-        //                     promise0,
-        //                     env::current_account_id(),
-        //                     "mint_result",
-        //                     &[],
-        //                     0,
-        //                     Gas::from(DEFAULT_GAS),
-        //                 );
-        //                 env::promise_return(promise1);
-        //                 PromiseOrValue::Value(U128::from(0))
-        //             }
-        //             _ => {
-        //                 log!("Sale have not started yet");
-        //                 PromiseOrValue::Value(amount)
-        //             }
-        //         }
-        //     }
-        //     _ => {
-        //         log!("Invalid instruction for launchpad call");
-        //         PromiseOrValue::Value(amount)
-        //     }
-        // }
     }
 }
 
@@ -576,7 +480,7 @@ mod tests {
             .build()
     }
 
-    fn default_launchpad_init(admin: String) -> Promise {
+    fn default_launchpad_init(admin: String) -> Launchpad {
         self::Launchpad::new(
             U128::from(100),
             AccountId::new_unchecked("usdc_near".to_string()),

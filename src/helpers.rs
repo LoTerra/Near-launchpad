@@ -14,6 +14,7 @@ pub(crate) fn promise_mint_pack(
     mint_limit: u16,
     current_account: AccountId,
     storage_deposit: U128,
+    amount_cost: U128,
 ) -> u128 {
     let storage_mint = u128::from(mint_limit) * MINT_STORAGE_COST;
     require!(
@@ -61,36 +62,13 @@ pub(crate) fn promise_mint_pack(
     env::promise_batch_action_function_call(
         callback_promise_id, // associate the function call with callback_promise_id
         "mint_result",       // the function call will be a callback function
-        &json!({ "reduce_amount": mint_limit })
+        &json!({ "reduce_from_supply": mint_limit, "receiver_id": receiver_id, "from": env::predecessor_account_id(), "refund_amount": amount_cost })
             .to_string()
             .as_bytes(), // method arguments
         0,                   // amount of yoctoNEAR to attach
         Gas::from(DEFAULT_GAS), // gas to attach
     );
 
-    // // TODO: Mint the NFT pack and send it to the sender
-    // let promise0 = env::promise_create(
-    //     nft_pack_contract,
-    //     "nft_mint",
-    //     json!({
-    //         "token_id": token_id,
-    //         "receiver_id": receiver_id,
-    //         "token_metadata": token_metadata
-    //     })
-    //     .to_string()
-    //     .as_bytes(),
-    //     U128::from(MINT_STORAGE_COST).0,
-    //     default_gas,
-    // );
-    // let promise1 = env::promise_then(
-    //     promise0,
-    //     env::current_account_id(),
-    //     "mint_result",
-    //     &[],
-    //     0,
-    //     default_gas,
-    // );
     env::promise_return(callback_promise_id);
     storage_mint
-    //env::promise_return(promise1)
 }
