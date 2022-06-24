@@ -272,9 +272,9 @@ impl Launchpad {
             }
             PromiseResult::Failed => {
                 /*
-                    Highlighting we probably don't need to refund
-                    FT contract is already waiting a PromiseOrValue with a refund if fail
-                 */
+                   Highlighting we probably don't need to refund
+                   FT contract is already waiting a PromiseOrValue with a refund if fail
+                */
                 // log!("Refund because failed to mint NFT pack");
                 // // Probably we need to refund the user here
                 // Promise::new(from).function_call(
@@ -490,7 +490,7 @@ mod tests {
             U128::from(100),
             AccountId::new_unchecked("usdc_near".to_string()),
             AccountId::new_unchecked("usdt_near".to_string()),
-            AccountId::new_unchecked("dai_near".to_string()),
+            //AccountId::new_unchecked("dai_near".to_string()),
             100,
             200,
             5000,
