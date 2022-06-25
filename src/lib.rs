@@ -44,7 +44,6 @@ pub struct Launchpad {
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug)]
 #[serde(crate = "near_sdk::serde")]
 pub struct WhitelistState {
-    restricted: bool,
     minting_start: Timestamp,
     minting_price: U128,
     minting_limit: u8,
@@ -132,30 +131,49 @@ impl Launchpad {
     /// Admin add account id to whitelist
     pub fn add_whitelist(
         &mut self,
-        address: String,
+        account_id: AccountId,
         minting_start: Timestamp,
         minting_price: U128,
         minting_limit: u8,
     ) {
         require!(env::signer_account_id() == self.admin, "Owner's method");
-        let account_id = AccountId::new_unchecked(address.clone());
         require!(
-            self.whitelist.get(&account_id).is_none(),
-            "Address already exist"
+            env::is_valid_account_id(&account_id.as_bytes()),
+            "Not a valid account id"
+        );
+        require!(
+            self.whitelist.get(&account_id.into()).is_none(),
+            "Account already exist"
         );
 
         self.whitelist.insert(
-            &account_id,
+            &account_id.into(),
             &WhitelistState {
-                restricted: false,
                 minting_start,
                 minting_price,
                 minting_limit,
             },
         );
 
-        log!(format!("Whitelist user {}", address));
+        log!(format!("Whitelist account {}", account_id));
     }
+
+    /// Admin delete account from whitelist
+    pub fn delete_whitelist(&mut self, account_id: AccountId) {
+        require!(env::signer_account_id() == self.admin, "Owner's method");
+        require!(
+            env::is_valid_account_id(&account_id.as_bytes()),
+            "Not a valid account id"
+        );
+        require!(
+            self.whitelist.get(&account_id.into()).is_some(),
+            "Account not found"
+        );
+
+        self.whitelist.remove(&account_id.into());
+        log!(format!("Delete whitelist account {}", account_id));
+    }
+
     /// Near deposit storage, used as fee for minting NFT
     #[payable]
     pub fn storage_deposit(&mut self, account: Option<AccountId>) {
@@ -188,6 +206,7 @@ impl Launchpad {
             self.storage_deposits.insert(&account_id.into(), &deposit);
         }
     }
+
     /// Withdraw all storage deposited
     #[payable]
     pub fn storage_withdraw_all(&mut self) -> Promise {
@@ -211,13 +230,26 @@ impl Launchpad {
 
         Promise::new(account).transfer(balance.0)
     }
-    /*
-       TODO: Add delete from whitelist only admin allowed
-    */
 
     /*
-       TODO: Allow admin to withdraw collected funds out of the launchpad contract
+       Allow admin to withdraw collected funds out of the launchpad contract
     */
+    /// Admin can withdraw collected funds
+    pub fn admin_collect(self, from: AccountId, amount: U128) -> Promise {
+        require!(env::signer_account_id() == self.admin, "Owner's method");
+        Promise::new(from).function_call(
+            "ft_transfer".to_string(),
+            json!({
+            "receiver_id": env::signer_account_id(),
+            "amount": amount
+            })
+            .to_string()
+            .as_bytes()
+            .to_vec(),
+            0,
+            Gas::from(DEFAULT_GAS),
+        )
+    }
 
     /// Queries
     /// Get storage balance from account id
