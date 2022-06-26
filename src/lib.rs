@@ -128,6 +128,7 @@ impl Launchpad {
             nft_pack_supply,
         }
     }
+
     /// Admin add account id to whitelist
     pub fn add_whitelist(
         &mut self,
@@ -236,11 +237,13 @@ impl Launchpad {
     */
     /// Admin can withdraw collected funds
     pub fn admin_collect(self, from: AccountId, amount: U128) -> Promise {
-        require!(env::signer_account_id() == self.admin, "Owner's method");
+        let signer_account_id = env::signer_account_id();
+        require!(signer_account_id == self.admin, "Owner's method");
+
         Promise::new(from).function_call(
             "ft_transfer".to_string(),
             json!({
-            "receiver_id": env::signer_account_id(),
+            "receiver_id": signer_account_id,
             "amount": amount
             })
             .to_string()
