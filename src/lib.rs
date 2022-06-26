@@ -33,7 +33,7 @@ pub struct Launchpad {
     public_sale_start: u64,
     switch_off: bool,
     // Create a storage key address => minted_amount value
-    minted: LookupMap<AccountId, u64>,
+    minted: LookupMap<AccountId, u16>,
     storage_deposits: LookupMap<AccountId, U128>,
     nft_pack_contract: AccountId,
     // available mint and decrease on every mint
@@ -278,7 +278,7 @@ impl Launchpad {
     }
 
     /// Get minting info from account id
-    pub fn get_minting_of(self, account: AccountId) -> u64 {
+    pub fn get_minting_of(self, account: AccountId) -> u16 {
         require!(
             self.minted.contains_key(&account.clone().into()),
             "No account found"
@@ -416,10 +416,10 @@ impl FungibleTokenReceiver for Launchpad {
                                     self.minted.get(&sender_id.clone().into()).unwrap();
                                 self.minted.insert(
                                     &sender_id.clone().into(),
-                                    &amount_minted.checked_add(1).unwrap(),
+                                    &amount_minted.checked_add(mint_amount).unwrap(),
                                 );
                             } else {
-                                self.minted.insert(&sender_id.clone().into(), &1);
+                                self.minted.insert(&sender_id.clone().into(), &mint_amount);
                             }
 
                             // Mint the NFT pack and send it to the sender
@@ -460,15 +460,23 @@ impl FungibleTokenReceiver for Launchpad {
                                 let amount_minted =
                                     self.minted.get(&sender_id.clone().into()).unwrap();
                                 require!(
-                                    u64::from(whitelist_user.minting_limit) < amount_minted,
-                                    "Minting limit reached"
+                                    u16::from(whitelist_user.minting_limit)
+                                        <= amount_minted.checked_add(mint_amount).unwrap(),
+                                    "Out of mint"
                                 );
                                 self.minted.insert(
                                     &sender_id.clone().into(),
-                                    &amount_minted.checked_add(1).unwrap(),
+                                    &amount_minted.checked_add(mint_amount).unwrap(),
                                 );
                             } else {
-                                self.minted.insert(&sender_id.clone().into(), &1);
+                                require!(
+                                    u16::from(whitelist_user.minting_limit) <= mint_amount,
+                                    format!(
+                                        "Whitelisted account only allowed to mint {} NFTs pack",
+                                        whitelist_user.minting_limit
+                                    )
+                                );
+                                self.minted.insert(&sender_id.clone().into(), &mint_amount);
                             }
                             // Mint the NFT pack and send it to the sender
                             let used_storage_deposit = promise_mint_pack(
