@@ -17,6 +17,7 @@ pub(crate) fn promise_mint_pack(
     // amount_cost: U128,
 ) -> u128 {
     let storage_mint = u128::from(mint_limit) * MINT_STORAGE_COST;
+    println!("{}, {}", storage_deposit.0, storage_mint);
     require!(
         storage_deposit.0 >= storage_mint,
         format!(

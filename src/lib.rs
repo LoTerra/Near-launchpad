@@ -240,7 +240,7 @@ impl Minter {
        Allow admin to withdraw collected funds out of the Minter contract
     */
     /// Admin can withdraw collected funds
-    pub fn admin_collect(self, from: AccountId, amount: U128) -> Promise {
+    pub fn admin_collect(&self, from: AccountId, amount: U128) -> Promise {
         let signer_account_id = env::signer_account_id();
         require!(signer_account_id == self.admin, "Owner's method");
 
@@ -261,7 +261,7 @@ impl Minter {
     /// Queries
     /// Get storage balance from account id
     // Allow users to check their deposited amount
-    pub fn get_storage_balance_of(self, account: AccountId) -> U128 {
+    pub fn get_storage_balance_of(&self, account: AccountId) -> U128 {
         require!(
             self.storage_deposits.contains_key(&account.clone().into()),
             "No account found"
@@ -282,7 +282,7 @@ impl Minter {
     }
 
     /// Get minting info from account id
-    pub fn get_minting_of(self, account: AccountId) -> u16 {
+    pub fn get_minting_of(&self, account: AccountId) -> u16 {
         require!(
             self.minted.contains_key(&account.clone().into()),
             "No account found"
@@ -413,7 +413,7 @@ impl FungibleTokenReceiver for Minter {
                     );
 
                     match env::block_timestamp() {
-                        time if time > self.public_sale_start => {
+                        time if time >= self.public_sale_start => {
                             // Save the Sender to minted storage and increment the amount already minted
                             if self.minted.contains_key(&sender_id.clone().into()) {
                                 let amount_minted =
@@ -451,21 +451,22 @@ impl FungibleTokenReceiver for Minter {
 
                             PromiseOrValue::Value(U128::from(0))
                         }
-                        time if time > self.private_sale_start => {
+                        time if time >= self.private_sale_start => {
                             // Verify the sender is in the whitelist
                             require!(
-                                self.whitelist.get(&sender_id).is_some(),
+                                self.whitelist.get(&sender_id.clone().into()).is_some(),
                                 "The address is not in the whitelist"
                             );
                             // Verify the sender have not reached the minting limit
                             // Save the Sender to minted storage and increment the amount already minted
-                            let whitelist_user = self.whitelist.get(&sender_id).unwrap();
+                            let whitelist_user =
+                                self.whitelist.get(&sender_id.clone().into()).unwrap();
                             if self.minted.contains_key(&sender_id.clone().into()) {
                                 let amount_minted =
                                     self.minted.get(&sender_id.clone().into()).unwrap();
                                 require!(
                                     u16::from(whitelist_user.minting_limit)
-                                        <= amount_minted.checked_add(mint_amount).unwrap(),
+                                        >= amount_minted.checked_add(mint_amount).unwrap(),
                                     "Out of mint"
                                 );
                                 self.minted.insert(
@@ -474,7 +475,7 @@ impl FungibleTokenReceiver for Minter {
                                 );
                             } else {
                                 require!(
-                                    u16::from(whitelist_user.minting_limit) <= mint_amount,
+                                    u16::from(whitelist_user.minting_limit) >= mint_amount,
                                     format!(
                                         "Whitelisted account only allowed to mint {} NFTs pack",
                                         whitelist_user.minting_limit
@@ -522,7 +523,7 @@ impl FungibleTokenReceiver for Minter {
 mod tests {
     use super::*;
     use near_sdk::test_utils::VMContextBuilder;
-    use near_sdk::{testing_env, AccountId, VMContext};
+    use near_sdk::{testing_env, AccountId, VMContext, ONE_YOCTO};
 
     fn get_context(is_view: bool) -> VMContext {
         VMContextBuilder::new()
@@ -624,5 +625,185 @@ mod tests {
         testing_env!(context);
         // Admin delete alice_near account
         contract.delete_whitelist(AccountId::new_unchecked("alice_near".to_string()));
+    }
+
+    #[test]
+    fn try_storage_deposit() {
+        let mut context = get_context(false);
+        context.signer_account_id = AccountId::new_unchecked("alice_near".to_string());
+        // Attach minimum deposit amount to the sender
+        context.attached_deposit = U128::from(5_870_000_000_000_000_000_000).0;
+        testing_env!(context.clone());
+        let mut contract = default_minter_init();
+        // Deposit to the current signer account
+        contract.storage_deposit(None);
+        // Verify storage deposit
+        assert_eq!(
+            contract.get_storage_balance_of(context.clone().signer_account_id),
+            U128::from(5_870_000_000_000_000_000_000)
+        );
+
+        //let mut context = get_context(false);
+        // Attach minimum deposit amount to the sender
+        context.attached_deposit = U128::from(10_000_000_000_000_000_000_000).0;
+        testing_env!(context.clone());
+        let mut contract = default_minter_init();
+        let bob_account = AccountId::new_unchecked("bob_near".to_string());
+        // Deposit to the desired account
+        contract.storage_deposit(Some(bob_account.clone()));
+        // Verify Bob storage deposit
+        assert_eq!(
+            contract.get_storage_balance_of(bob_account),
+            U128::from(10_000_000_000_000_000_000_000)
+        );
+        // Verify Alice account storage deposit remain the same
+        assert_eq!(
+            contract.get_storage_balance_of(context.clone().signer_account_id),
+            U128::from(5_870_000_000_000_000_000_000)
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn try_storage_deposit_less_than_authorized() {
+        let mut context = get_context(false);
+        // Attach less than minimum deposit amount to the sender
+        // min 5_870_000_000_000_000_000_000 attached 4_870_000_000_000_000_000_000
+        context.attached_deposit = U128::from(4_870_000_000_000_000_000_000).0;
+        testing_env!(context.clone());
+        let mut contract = default_minter_init();
+        // Deposit to the current signer account
+        contract.storage_deposit(None);
+    }
+
+    #[test]
+    fn try_storage_deposit_withdraw() {
+        let mut context = get_context(false);
+        context.signer_account_id = AccountId::new_unchecked("alice_near".to_string());
+        // Attach minimum deposit amount to the sender
+        context.attached_deposit = U128::from(5_870_000_000_000_000_000_000).0;
+        testing_env!(context.clone());
+        let mut contract = default_minter_init();
+        // Deposit to the current signer account
+        contract.storage_deposit(None);
+        // Attach 1 yocto_near
+        context.attached_deposit = ONE_YOCTO;
+        testing_env!(context.clone());
+        // Withdraw previously deposited amount
+        contract.storage_withdraw_all();
+        // // Verify storage deposit
+        // assert_eq!(contract.get_storage_balance_of(context.clone().signer_account_id), "No account found");
+    }
+
+    #[test]
+    #[should_panic]
+    fn try_storage_deposit_withdraw_without_attaching_one_yocto() {
+        let mut context = get_context(false);
+        context.signer_account_id = AccountId::new_unchecked("alice_near".to_string());
+        // Attach minimum deposit amount to the sender
+        context.attached_deposit = U128::from(5_870_000_000_000_000_000_000).0;
+        testing_env!(context.clone());
+        let mut contract = default_minter_init();
+        // Deposit to the current signer account
+        contract.storage_deposit(None);
+        // Withdraw previously deposited amount
+        contract.storage_withdraw_all();
+    }
+    #[test]
+    #[should_panic]
+    fn try_storage_deposit_withdraw_no_deposit_found() {
+        let mut context = get_context(false);
+        context.signer_account_id = AccountId::new_unchecked("alice_near".to_string());
+        testing_env!(context.clone());
+        let mut contract = default_minter_init();
+        // Attach 1 yocto_near
+        context.attached_deposit = ONE_YOCTO;
+        testing_env!(context.clone());
+        // Withdraw previously deposited amount
+        contract.storage_withdraw_all();
+    }
+
+    #[test]
+    fn try_mint_sending_ft_sale_not_started_yet() {
+        let mut context = get_context(false);
+        context.signer_account_id = AccountId::new_unchecked("alice_near".to_string());
+        context.predecessor_account_id = AccountId::new_unchecked("usdc_near".to_string());
+        context.attached_deposit = U128::from(5_870_000_000_000_000_000_000).0;
+        testing_env!(context.clone());
+        let mut contract = default_minter_init();
+        // Deposit Near for minting
+        contract.storage_deposit(None);
+        contract.ft_on_transfer(
+            context.signer_account_id,
+            U128::from(1000),
+            json!({
+                "mint_amount": 10
+            })
+            .to_string(),
+        );
+    }
+
+    #[test]
+    fn try_mint_sending_ft_private_sale_started_account_whitelisted() {
+        let mut context = get_context(false);
+        // Admin whitelist Alice
+        context.signer_account_id = AccountId::new_unchecked("admin_near".to_string());
+        testing_env!(context.clone());
+        let mut contract = default_minter_init();
+        contract.add_whitelist(
+            AccountId::new_unchecked("alice_near".to_string()),
+            env::block_timestamp().checked_add(100).unwrap(),
+            U128::from(1000),
+            5,
+        );
+
+        // Alice try to participate the public sale
+        context.signer_account_id = AccountId::new_unchecked("alice_near".to_string());
+        context.predecessor_account_id = AccountId::new_unchecked("usdc_near".to_string());
+        context.attached_deposit = U128::from(40_350_000_000_000_000_000_000).0;
+        context.block_timestamp = 100;
+        testing_env!(context.clone());
+
+        // Deposit Near for minting
+        contract.storage_deposit(None);
+        // Mint 3 of 5
+        contract.ft_on_transfer(
+            context.signer_account_id.clone(),
+            U128::from(300),
+            json!({
+                "mint_amount": 3
+            })
+            .to_string(),
+        );
+        // // Mint 5 of 5
+        contract.ft_on_transfer(
+            context.signer_account_id,
+            U128::from(200),
+            json!({
+                "mint_amount": 2
+            })
+            .to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn try_mint_sending_ft_private_sale_started_account_not_whitelisted() {
+        let mut context = get_context(false);
+        context.signer_account_id = AccountId::new_unchecked("alice_near".to_string());
+        context.predecessor_account_id = AccountId::new_unchecked("usdc_near".to_string());
+        context.attached_deposit = U128::from(5_870_000_000_000_000_000_000).0;
+        testing_env!(context.clone());
+        let mut contract = default_minter_init();
+        // Deposit Near for minting
+        contract.storage_deposit(None);
+        contract.ft_on_transfer(
+            context.signer_account_id,
+            U128::from(1000),
+            json!({
+                "mint_amount": 10
+            })
+            .to_string(),
+        );
     }
 }
