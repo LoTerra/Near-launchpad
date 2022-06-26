@@ -1,5 +1,5 @@
 [package]
-name = "launchpad"
+name = "minter"
 version = "0.1.0"
 authors = ["0xantman <contact@loterra.io>"]
 edition = "2018"

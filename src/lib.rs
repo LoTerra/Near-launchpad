@@ -24,7 +24,7 @@ const MIN_DEPOSIT_CREATING_ACCOUNT: u128 = 5_000_000_000_000_000_000_000_000;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
-pub struct Launchpad {
+pub struct Minter {
     // Create whitelist storage key address => WhitelistState value
     whitelist: UnorderedMap<AccountId, WhitelistState>,
     minting_price: U128,
@@ -61,7 +61,7 @@ enum TokenReceiverMessage {
 }
 
 #[near_bindgen]
-impl Launchpad {
+impl Minter {
     /// Instantiate the contract
     #[init]
     pub fn new(
@@ -236,7 +236,7 @@ impl Launchpad {
     }
 
     /*
-       Allow admin to withdraw collected funds out of the launchpad contract
+       Allow admin to withdraw collected funds out of the Minter contract
     */
     /// Admin can withdraw collected funds
     pub fn admin_collect(self, from: AccountId, amount: U128) -> Promise {
@@ -336,7 +336,7 @@ impl Launchpad {
 }
 
 #[near_bindgen]
-impl FungibleTokenReceiver for Launchpad {
+impl FungibleTokenReceiver for Minter {
     fn ft_on_transfer(
         &mut self,
         sender_id: AccountId,
@@ -530,8 +530,8 @@ mod tests {
             .build()
     }
 
-    fn default_launchpad_init() -> Launchpad {
-        self::Launchpad::new(
+    fn default_minter_init() -> Minter {
+        self::Minter::new(
             U128::from(100),
             AccountId::new_unchecked("usdc_near".to_string()),
             AccountId::new_unchecked("usdt_near".to_string()),
@@ -548,7 +548,7 @@ mod tests {
         context.signer_account_id = AccountId::new_unchecked("admin_near".to_string());
         testing_env!(context);
 
-        let mut contract = default_launchpad_init();
+        let mut contract = default_minter_init();
         contract.add_whitelist(
             AccountId::new_unchecked("alice_near".to_string()),
             env::block_timestamp().checked_add(100).unwrap(),
@@ -573,7 +573,7 @@ mod tests {
     #[should_panic]
     fn try_whitelist_not_authorized() {
         let mut context = get_context(false);
-        let mut contract = default_launchpad_init();
+        let mut contract = default_minter_init();
         context.signer_account_id = AccountId::new_unchecked("alice_near".to_string());
         testing_env!(context);
 
