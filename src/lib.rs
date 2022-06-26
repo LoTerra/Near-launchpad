@@ -18,15 +18,14 @@ const CODE: &[u8] =
 const DEFAULT_GAS: u64 = 5_000_000_000_000;
 const MINT_STORAGE_COST: u128 = 5870000000000000000000;
 /*
-    IMPORTANT: Reduce amount for mainnet
- */
+   IMPORTANT: Reduce amount for mainnet
+*/
 const MIN_DEPOSIT_CREATING_ACCOUNT: u128 = 5_000_000_000_000_000_000_000_000;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Minter {
-    // Create whitelist storage key address => WhitelistState value
-    whitelist: UnorderedMap<AccountId, WhitelistState>,
+    whitelist: UnorderedMap<AccountId, WhitelistState>, // Create whitelist storage key address => WhitelistState value
     minting_price: U128,
     admin: AccountId,
     usdc_account_id: AccountId,
@@ -35,12 +34,10 @@ pub struct Minter {
     private_sale_start: u64,
     public_sale_start: u64,
     switch_off: bool,
-    // Create a storage key address => minted_amount value
-    minted: LookupMap<AccountId, u16>,
+    minted: LookupMap<AccountId, u16>, // Create a storage key address => minted_amount value
     storage_deposits: LookupMap<AccountId, U128>,
     nft_pack_contract: AccountId,
-    // available mint and decrease on every mint
-    nft_pack_supply: u16,
+    nft_pack_supply: u16, // Available mint and decrease on every mint
 }
 
 #[near_bindgen]
