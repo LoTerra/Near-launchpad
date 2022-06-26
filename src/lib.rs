@@ -41,7 +41,7 @@ pub struct Launchpad {
 }
 
 #[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, PartialEq)]
 #[serde(crate = "near_sdk::serde")]
 pub struct WhitelistState {
     minting_start: Timestamp,
@@ -142,12 +142,12 @@ impl Launchpad {
             "Not a valid account id"
         );
         require!(
-            self.whitelist.get(&account_id.into()).is_none(),
+            self.whitelist.get(&account_id.clone().into()).is_none(),
             "Account already exist"
         );
 
         self.whitelist.insert(
-            &account_id.into(),
+            &account_id.clone().into(),
             &WhitelistState {
                 minting_start,
                 minting_price,
@@ -166,11 +166,11 @@ impl Launchpad {
             "Not a valid account id"
         );
         require!(
-            self.whitelist.get(&account_id.into()).is_some(),
+            self.whitelist.get(&account_id.clone().into()).is_some(),
             "Account not found"
         );
 
-        self.whitelist.remove(&account_id.into());
+        self.whitelist.remove(&account_id.clone().into());
         log!(format!("Delete whitelist account {}", account_id));
     }
 
@@ -453,7 +453,6 @@ impl FungibleTokenReceiver for Launchpad {
                             // Verify the sender have not reached the minting limit
                             // Save the Sender to minted storage and increment the amount already minted
                             let whitelist_user = self.whitelist.get(&sender_id).unwrap();
-                            require!(!whitelist_user.restricted, "Address have been restricted");
                             if self.minted.contains_key(&sender_id.clone().into()) {
                                 let amount_minted =
                                     self.minted.get(&sender_id.clone().into()).unwrap();
@@ -512,12 +511,12 @@ mod tests {
 
     fn get_context(is_view: bool) -> VMContext {
         VMContextBuilder::new()
-            .signer_account_id(AccountId::new_unchecked("bob_near".to_string()))
+            .signer_account_id(AccountId::new_unchecked("admin_near".to_string()))
             .is_view(is_view)
             .build()
     }
 
-    fn default_launchpad_init(admin: String) -> Launchpad {
+    fn default_launchpad_init() -> Launchpad {
         self::Launchpad::new(
             U128::from(100),
             AccountId::new_unchecked("usdc_near".to_string()),
@@ -535,38 +534,40 @@ mod tests {
         context.signer_account_id = AccountId::new_unchecked("admin_near".to_string());
         testing_env!(context);
 
-        let mut contract = default_launchpad_init("admin_near".to_string());
+        let mut contract = default_launchpad_init();
         contract.add_whitelist(
-            "alice_near".to_string(),
+            AccountId::new_unchecked("alice_near".to_string()),
             env::block_timestamp().checked_add(100).unwrap(),
             U128::from(1000),
             5,
         );
-        println!("Ok: {:?}", contract.get_whitelist(0, 10));
+
+        assert_eq!(
+            contract.get_whitelist(0, 10),
+            vec![(
+                AccountId::new_unchecked("alice_near".to_string()),
+                WhitelistState {
+                    minting_start: 100,
+                    minting_price: U128::from(1000),
+                    minting_limit: 5
+                }
+            )]
+        );
     }
 
     #[test]
     #[should_panic]
-    fn should_fail() {
-        let context = get_context(false);
+    fn try_whitelist_not_authorized() {
+        let mut context = get_context(false);
+        let mut contract = default_launchpad_init();
+        context.signer_account_id = AccountId::new_unchecked("alice_near".to_string());
         testing_env!(context);
-        let mut contract = default_launchpad_init("admin_near".to_string());
+
         contract.add_whitelist(
-            "alice_near".to_string(),
+            AccountId::new_unchecked("alice_near".to_string()),
             env::block_timestamp().checked_add(100).unwrap(),
             U128::from(10),
             5,
-        );
+        )
     }
-
-    // #[test]
-    // fn buy() {
-    //     let mut context = get_context(false);
-    //     context.predecessor_account_id = AccountId::new_unchecked("usdc_near".to_string());
-    //     testing_env!(context);
-    //
-    //     let mut contract = default_launchpad_init("admin_near".to_string());
-    //     contract.callback_buy(AccountId::new_unchecked("usdc_near".to_string()), U128(100));
-    //     //println!("Ok: {:?}", contract.get_whitelist());
-    // }
 }
