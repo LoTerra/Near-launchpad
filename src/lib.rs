@@ -17,7 +17,10 @@ const CODE: &[u8] =
     include_bytes!("../../NFT/target/wasm32-unknown-unknown/release/non_fungible_token.wasm");
 const DEFAULT_GAS: u64 = 5_000_000_000_000;
 const MINT_STORAGE_COST: u128 = 5870000000000000000000;
-const MIN_DEPOSIT_CREATING_ACCOUNT: u128 = 50_000_000_000_000_000_000_000_000;
+/*
+    IMPORTANT: Reduce amount for mainnet
+ */
+const MIN_DEPOSIT_CREATING_ACCOUNT: u128 = 5_000_000_000_000_000_000_000_000;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
