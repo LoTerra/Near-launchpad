@@ -20,7 +20,7 @@ pub(crate) fn promise_mint_pack(
     require!(
         storage_deposit.0 >= storage_mint,
         format!(
-            "Required minimum storage deposit of {} Yocto Near",
+            "Minimum required for storage deposit of {} Yocto Near",
             storage_mint
         )
     );
