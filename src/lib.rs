@@ -146,6 +146,10 @@ impl Minter {
             self.whitelist.get(&account_id.clone().into()).is_none(),
             "Account already exist"
         );
+        require!(
+            minting_start >= env::block_timestamp(),
+            "Minting start should be greater than now"
+        );
 
         self.whitelist.insert(
             &account_id.clone().into(),
@@ -580,5 +584,45 @@ mod tests {
             U128::from(10),
             5,
         )
+    }
+
+    #[test]
+    fn admin_try_delete() {
+        let mut context = get_context(false);
+        context.signer_account_id = AccountId::new_unchecked("admin_near".to_string());
+        testing_env!(context);
+        let mut contract = default_minter_init();
+        // Admin add alice_near account
+        contract.add_whitelist(
+            AccountId::new_unchecked("alice_near".to_string()),
+            env::block_timestamp().checked_add(100).unwrap(),
+            U128::from(1000),
+            5,
+        );
+        // Admin delete alice_near account
+        contract.delete_whitelist(AccountId::new_unchecked("alice_near".to_string()));
+
+        assert_eq!(contract.get_whitelist(0, 10), vec![]);
+    }
+
+    #[test]
+    #[should_panic]
+    fn unauthorized_account_try_to_delete_accounts() {
+        let mut context = get_context(false);
+        context.signer_account_id = AccountId::new_unchecked("admin_near".to_string());
+        testing_env!(context);
+        let mut contract = default_minter_init();
+        // Admin add alice_near account
+        contract.add_whitelist(
+            AccountId::new_unchecked("alice_near".to_string()),
+            env::block_timestamp().checked_add(100).unwrap(),
+            U128::from(1000),
+            5,
+        );
+        let mut context = get_context(false);
+        context.signer_account_id = AccountId::new_unchecked("bob_near".to_string());
+        testing_env!(context);
+        // Admin delete alice_near account
+        contract.delete_whitelist(AccountId::new_unchecked("alice_near".to_string()));
     }
 }
