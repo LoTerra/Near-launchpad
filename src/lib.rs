@@ -288,9 +288,9 @@ impl Launchpad {
     pub fn mint_result(
         &mut self,
         reduce_from_supply: u16,
-        _receiver_id: AccountId,
-        _from: AccountId,
-        _refund_amount: U128,
+        // _receiver_id: AccountId,
+        // _from: AccountId,
+        // _refund_amount: U128,
     ) {
         require!(env::promise_results_count() == 1);
         match env::promise_result(0) {
@@ -428,7 +428,7 @@ impl FungibleTokenReceiver for Launchpad {
                                 mint_amount,
                                 env::current_account_id(),
                                 storage_deposit.unwrap_or(U128::from(0)),
-                                amount,
+                                // amount,
                             );
 
                             self.storage_deposits.insert(
@@ -476,7 +476,7 @@ impl FungibleTokenReceiver for Launchpad {
                                 mint_amount,
                                 env::current_account_id(),
                                 storage_deposit.unwrap_or(U128::from(0)),
-                                amount,
+                                // amount,
                             );
                             self.storage_deposits.insert(
                                 &sender_id.clone().into(),

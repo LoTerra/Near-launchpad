@@ -14,7 +14,7 @@ pub(crate) fn promise_mint_pack(
     mint_limit: u16,
     current_account: AccountId,
     storage_deposit: U128,
-    amount_cost: U128,
+    // amount_cost: U128,
 ) -> u128 {
     let storage_mint = u128::from(mint_limit) * MINT_STORAGE_COST;
     require!(
@@ -58,11 +58,15 @@ pub(crate) fn promise_mint_pack(
         promise_id,       // postpone until a DataReceipt associated with promise_id is received
         &current_account, // the recipient of this ActionReceipt (&self)
     );
-
+    /*
+       Just for info if refund not work just add on argument and uncomment the mint_result params
+       message &json!({ "reduce_from_supply": mint_limit, "receiver_id": receiver_id, "from":
+       env::predecessor_account_id(), "refund_amount": amount_cost })
+    */
     env::promise_batch_action_function_call(
         callback_promise_id, // associate the function call with callback_promise_id
         "mint_result",       // the function call will be a callback function
-        &json!({ "reduce_from_supply": mint_limit, "receiver_id": receiver_id, "from": env::predecessor_account_id(), "refund_amount": amount_cost })
+        &json!({ "reduce_from_supply": mint_limit })
             .to_string()
             .as_bytes(), // method arguments
         0,                   // amount of yoctoNEAR to attach
